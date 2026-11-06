@@ -1,0 +1,11 @@
+# Données utilisateurs et base de comptes : ne jamais publier
+velofit_data/
+*.db
+*.db-wal
+*.db-shm
+# Secrets
+.streamlit/secrets.toml
+secrets.toml
+# Python
+__pycache__/
+*.pyc
