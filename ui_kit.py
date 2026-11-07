@@ -197,6 +197,17 @@ a{color:var(--acc);}
 .stApp [data-testid="stFormSubmitButton"] button, .stApp [data-testid="stFormSubmitButton"] button *{opacity:1 !important;}
 [data-testid="stFormSubmitButton"] button{width:100%;}
 
+
+/* ---------- saisie lisible sur iPhone / Safari (texte, points du mot de passe, remplissage automatique) ---------- */
+.stApp [data-baseweb="input"] input, .stApp [data-baseweb="base-input"] input, .stApp [data-testid="stTextInputRootElement"] input,
+.stApp [data-testid="stNumberInputContainer"] input, .stApp textarea{
+  color:#eef2f7 !important; -webkit-text-fill-color:#eef2f7 !important; opacity:1 !important; background-color:transparent !important;
+  font-size:16px !important; -webkit-appearance:none; appearance:none;}
+.stApp input:-webkit-autofill, .stApp input:-webkit-autofill:hover, .stApp input:-webkit-autofill:focus, .stApp input:-internal-autofill-selected{
+  -webkit-text-fill-color:#eef2f7 !important; caret-color:#c6f432; -webkit-box-shadow:0 0 0 1000px #111823 inset !important; box-shadow:0 0 0 1000px #111823 inset !important;
+  transition:background-color 9999s ease-out 0s;}
+.stApp [data-testid="stTextInputRootElement"], .stApp [data-testid="stNumberInputContainer"]{background:#111823 !important; border-radius:10px;}
+
 /* ---------- téléphone ---------- */
 @media (max-width: 640px){
   .block-container{padding:3.6rem .85rem 3rem;}
