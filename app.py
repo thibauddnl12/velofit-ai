@@ -21,7 +21,7 @@ import auth_ui
 import velofit_core as core
 from velofit_core import META, ORDER, STATUS
 
-st.set_page_config(page_title="VeloFit AI — Studio Postural", page_icon="🚴", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="VeloFit AI — Studio Postural", page_icon="🚴", layout="wide", initial_sidebar_state="auto")
 
 # ------------------------------------------------------------------------------
 #  DESIGN
@@ -39,7 +39,7 @@ header[data-testid="stHeader"]{background:transparent;}
 [data-testid="stSidebar"] h3{font-family:'Space Grotesk',sans-serif; font-size:1rem; letter-spacing:.02em; color:var(--cy);}
 .side-sec{font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; color:var(--mut); margin:18px 0 6px;}
 .hero{position:relative; overflow:hidden; border:1px solid var(--line); border-radius:26px; padding:34px 40px; margin-bottom:22px;
-  background:linear-gradient(135deg, rgba(34,211,238,.09), rgba(139,92,246,.11)), var(--panel); backdrop-filter:blur(14px);}
+  background:linear-gradient(135deg, rgba(34,211,238,.09), rgba(139,92,246,.11)), var(--panel); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);}
 .hero::after{content:""; position:absolute; inset:0; pointer-events:none;
   background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
   background-size:38px 38px; -webkit-mask-image:radial-gradient(circle at 85% 15%, #000, transparent 65%); mask-image:radial-gradient(circle at 85% 15%, #000, transparent 65%);}
@@ -50,7 +50,7 @@ header[data-testid="stHeader"]{background:transparent;}
 .hero h1{font-family:'Space Grotesk',sans-serif; font-size:3rem; font-weight:700; line-height:1.05; margin:16px 0 10px; letter-spacing:-.03em; position:relative; z-index:1;
   background:linear-gradient(120deg,#fff 0%,#7dd3fc 45%,#a78bfa 100%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
 .hero p{max-width:760px; color:#9fb0c8; font-size:1.05rem; line-height:1.55; margin:0; position:relative; z-index:1;}
-.glass{background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:22px; backdrop-filter:blur(12px); box-shadow:0 18px 40px -20px rgba(0,0,0,.7);}
+.glass{background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:22px; -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); box-shadow:0 18px 40px -20px rgba(0,0,0,.7);}
 .feat{transition:transform .25s ease, border-color .25s ease; height:100%; margin-bottom:14px;}
 .feat:hover{transform:translateY(-4px); border-color:rgba(34,211,238,.45);}
 .feat .ico{font-size:1.6rem; margin-bottom:10px;}
@@ -99,6 +99,49 @@ header[data-testid="stHeader"]{background:transparent;}
 .stButton>button, .stDownloadButton>button{border-radius:12px; border:1px solid rgba(34,211,238,.4); background:linear-gradient(135deg,rgba(8,145,178,.25),rgba(109,40,217,.25)); color:#fff; font-weight:600; transition:all .2s ease;}
 .stButton>button:hover, .stDownloadButton>button:hover{border-color:var(--cy); box-shadow:0 8px 24px -10px rgba(34,211,238,.7); transform:translateY(-1px);}
 [data-testid="stMetric"]{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px;}
+
+/* ---- Thème sombre forcé, même si le téléphone est en mode clair ---- */
+:root{color-scheme:dark;}
+html{-webkit-text-size-adjust:100%;}
+.stApp{color-scheme:dark; overflow-x:hidden;}
+.stApp .stMarkdown, .stApp [data-testid="stWidgetLabel"] p, .stApp [data-testid="stWidgetLabel"] label, .stApp label p, .stApp [data-testid="stCaptionContainer"]{color:var(--txt);}
+.stApp [data-testid="stCaptionContainer"]{color:var(--mut);}
+
+/* ---- Couleurs de repli si le navigateur ne gère pas color-mix() ---- */
+.chip{border:1px solid var(--c); background:rgba(255,255,255,.06);}
+.insight{background:var(--panel);}
+@supports (color: color-mix(in srgb, red 50%, blue)){
+  .chip{border:1px solid color-mix(in srgb, var(--c) 45%, transparent); background:color-mix(in srgb, var(--c) 12%, transparent);}
+  .insight{background:linear-gradient(90deg, color-mix(in srgb, var(--c) 7%, transparent), transparent 60%), var(--panel);}
+}
+
+/* ---- Téléphone ---- */
+@media (max-width: 640px){
+  .block-container{padding:3.2rem .85rem 3rem;}
+  .hero{padding:22px 18px; border-radius:20px; margin-bottom:16px;}
+  .hero h1{font-size:2.05rem; margin:12px 0 8px;}
+  .hero p{font-size:.94rem;}
+  .hero-badge{font-size:.66rem; padding:5px 10px;}
+  .glass{padding:16px; border-radius:16px;}
+  .feat h4{font-size:1rem;}
+  .score-wrap{flex-direction:column; text-align:center; gap:14px;}
+  .ring{flex:0 0 auto; width:132px; height:132px;}
+  .ring-in{width:102px; height:102px;}
+  .ring-val{font-size:2.1rem;}
+  .verdict h3{font-size:1.25rem;}
+  .mcard{padding:12px 14px 10px;}
+  .mcard-top{flex-wrap:wrap; gap:6px;}
+  .mcard-value{font-size:1.7rem;}
+  .insight{padding:13px 14px;}
+  .insight-h b{font-size:1rem;}
+  .prio{flex-wrap:wrap; gap:8px;}
+  .stTabs [data-baseweb="tab-list"]{flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar{display:none;}
+  .stTabs [data-baseweb="tab"]{padding:8px 12px; white-space:nowrap; flex:0 0 auto; font-size:.88rem;}
+  [data-testid="stFileUploader"] section{padding:14px;}
+  [data-testid="stMetric"]{padding:10px;}
+  .step{padding:10px 0;}
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
