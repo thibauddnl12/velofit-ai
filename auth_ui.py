@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 import accounts as acc
+import ui_kit
 
 
 # ------------------------------------------------------------------------------
@@ -54,8 +55,7 @@ def _bootstrap_admin(username: str, password: str):
 #  CONNEXION
 # ------------------------------------------------------------------------------
 def _setup_help():
-    _H("""<div class="hero"><span class="hero-badge"><i></i>Configuration</span><h1>Compte administrateur requis</h1>
-    <p>Aucun administrateur n'est configuré. Définissez deux secrets, puis relancez l'application.</p></div>""")
+    _H(ui_kit.hero("Compte administrateur requis", "Aucun administrateur n'est configuré. Définissez deux secrets, puis relancez l'application.", "Configuration"))
     st.markdown("**En local**, créez le fichier `.streamlit/secrets.toml` à côté de `app.py` :")
     st.code('ADMIN_USERNAME = "votre_identifiant"\nADMIN_PASSWORD = "un-mot-de-passe-solide"\n# optionnel (paiements Stripe)\nSTRIPE_SECRET_KEY = "sk_test_..."', language="toml")
     st.markdown("**Sur Streamlit Community Cloud** : « Settings » → « Secrets », puis collez les mêmes lignes.")
@@ -65,16 +65,17 @@ def _setup_help():
 def _login_page():
     cfg = acc.get_settings()
     free = acc.setting_int(cfg, "free_credits")
-    _H(f"""<div class="hero"><span class="hero-badge"><i></i>Analyse biomécanique par IA</span><h1>VeloFit AI Studio</h1>
-    <p>Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité.</p></div>""")
+    _H(ui_kit.hero("VeloFit AI Studio", f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité."))
     allow = cfg["allow_signup"] == "1"
-    names = ["🔑 Connexion"] + (["✨ Créer un compte"] if allow else [])
-    tabs = st.tabs(names)
+    names = ["Connexion"] + (["Créer un compte"] if allow else [])
+    _l, _mid, _r = st.columns([1, 1.5, 1])
+    with _mid:
+        tabs = st.tabs(names)
     with tabs[0]:
         with st.form("login_form"):
             u = st.text_input("Identifiant", key="login_user")
             p = st.text_input("Mot de passe", type="password", key="login_pw")
-            go = st.form_submit_button("Se connecter")
+            go = st.form_submit_button("Se connecter", type="primary")
         if go:
             user, msg = acc.authenticate(u, p)
             if user is None:
@@ -93,7 +94,7 @@ def _login_page():
                 p1 = st.text_input("Mot de passe (8 caractères minimum)", type="password", key="su_pw1")
                 p2 = st.text_input("Confirmer le mot de passe", type="password", key="su_pw2")
                 ok_rgpd = st.checkbox("J'accepte que mes photos et vidéos soient traitées pour produire l'analyse. Elles ne sont conservées que si j'enregistre l'analyse dans mon historique.", key="su_rgpd")
-                go = st.form_submit_button("Créer mon compte")
+                go = st.form_submit_button("Créer mon compte", type="primary")
             if go:
                 if p1 != p2:
                     st.error("Les deux mots de passe ne correspondent pas.")
@@ -146,11 +147,11 @@ def subscribe_panel(user: dict, kp: str = "sub_"):
     url = acc.payment_url(cfg, user["username"], user.get("email", ""))
     if url:
         if hasattr(st, "link_button"):
-            st.link_button("💳 S'abonner", url)
+            st.link_button("S'abonner", url)
         else:
-            st.markdown(f"[💳 S'abonner]({url})")
+            st.markdown(f"[S'abonner]({url})")
         st.caption("Après le paiement, revenez ici et cliquez sur le bouton ci-dessous.")
-        if st.button("✅ J'ai payé : vérifier mon paiement", key=kp + "check"):
+        if st.button("J'ai payé : vérifier mon paiement", key=kp + "check", type="primary"):
             with st.spinner("Vérification du paiement…"):
                 n, msg = acc.sync_payments(user["username"], _secret("STRIPE_SECRET_KEY"), cfg)
             (st.success if n else st.info)(msg)
@@ -164,15 +165,15 @@ def subscribe_panel(user: dict, kp: str = "sub_"):
 
 def paywall(user: dict):
     stt = acc.status(user)
-    _H(f"""<div class="glass"><h3 style="font-family:'Space Grotesk';margin:0 0 6px;color:#fff;">Vos {stt['free_total']} analyses gratuites sont utilisées</h3>
-    <p style="color:#8a97ad;margin:0;">Abonnez-vous pour continuer à analyser vos photos et vidéos sans limite. Votre historique et vos profils restent accessibles.</p></div>""")
+    _H(f"""<div class="glass"><h3 style="margin:0 0 6px;">Vos {stt['free_total']} analyses gratuites sont utilisées</h3>
+    <p style="color:#8b97a8;margin:0;">Abonnez-vous pour continuer à analyser vos photos et vidéos sans limite. Votre historique et vos profils restent accessibles.</p></div>""")
     st.write("")
     subscribe_panel(user, "pw_")
 
 
 def sidebar_box(user: dict):
     stt = acc.status(user)
-    st.markdown(f"**👤 {user['username']}**" + ("  ·  administrateur" if stt["is_admin"] else ""))
+    st.markdown(f"**{user['username']}**" + ("  ·  administrateur" if stt["is_admin"] else ""))
     if stt["is_admin"]:
         st.caption("Accès illimité.")
     elif stt["sub_active"]:
@@ -181,17 +182,17 @@ def sidebar_box(user: dict):
         total = max(1, stt["free_total"])
         st.progress(min(1.0, stt["free_left"] / total), text=f"Analyses gratuites restantes : {stt['free_left']} / {stt['free_total']}")
     if not stt["is_admin"]:
-        with st.expander("💳 Abonnement" if not stt["sub_active"] else "💳 Prolonger"):
+        with st.expander("Abonnement" if not stt["sub_active"] else "Prolonger"):
             subscribe_panel(user, "sb_")
-    with st.expander("🔒 Mon mot de passe"):
+    with st.expander("Mon mot de passe"):
         with st.form("pw_form", clear_on_submit=True):
             old = st.text_input("Mot de passe actuel", type="password")
             new = st.text_input("Nouveau mot de passe", type="password")
-            go = st.form_submit_button("Modifier")
+            go = st.form_submit_button("Modifier", type="primary")
         if go:
             ok, msg = acc.change_own_password(user["username"], old, new)
             (st.success if ok else st.error)(msg)
-    if st.button("🚪 Se déconnecter", key="logout_btn"):
+    if st.button("Se déconnecter", key="logout_btn"):
         logout()
     st.caption("Votre analyse n'est comptée qu'une fois par fichier : la réafficher ne coûte rien.")
 
@@ -228,9 +229,9 @@ def admin_panel(admin: dict):
     st.markdown("##### Comptes")
     df = _users_df(users)
     _stretch(st.dataframe, df, hide_index=True)
-    st.download_button("📥 Exporter les comptes (CSV)", df.to_csv(index=False).encode("utf-8"), "comptes.csv", "text/csv", key="adm_csv")
+    st.download_button("Exporter les comptes (CSV)", df.to_csv(index=False).encode("utf-8"), "comptes.csv", "text/csv", key="adm_csv")
 
-    st.markdown("##### ➕ Créer un compte")
+    st.markdown("##### Créer un compte")
     with st.form("adm_create", clear_on_submit=False):
         a1, a2 = st.columns(2)
         nu = a1.text_input("Identifiant", key="adm_nu")
@@ -239,7 +240,7 @@ def admin_panel(admin: dict):
         nrole = a2.selectbox("Rôle", ["user", "admin"], key="adm_nrole")
         ncred = a1.number_input("Analyses gratuites", 0, 1000, acc.setting_int(acc.get_settings(), "free_credits"), key="adm_ncred")
         nsub = a2.number_input("Jours d'abonnement offerts", 0, 3650, 0, key="adm_nsub")
-        go = st.form_submit_button("Créer le compte")
+        go = st.form_submit_button("Créer le compte", type="primary")
     if go:
         pw = npw or secrets.token_urlsafe(9)
         ok, msg = acc.create_user(nu, pw, role=nrole, free_credits=int(ncred), sub_days=int(nsub), email=ne)
@@ -251,7 +252,7 @@ def admin_panel(admin: dict):
         else:
             st.error(msg)
 
-    st.markdown("##### 🛠️ Gérer un compte")
+    st.markdown("##### Gérer un compte")
     names = [u["username"] for u in users]
     if names:
         sel = st.selectbox("Compte", names, key="adm_sel")
@@ -262,21 +263,21 @@ def admin_panel(admin: dict):
                    f"abonnement : {'jusqu’au ' + stt['sub_until'].strftime('%d/%m/%Y') if stt['sub_active'] else 'aucun'}")
         b1, b2, b3 = st.columns(3)
         n_add = b1.number_input("Ajouter des analyses gratuites", 1, 1000, 3, key="adm_addn")
-        if b1.button("➕ Ajouter", key="adm_add"):
+        if b1.button("Ajouter", key="adm_add"):
             acc.add_credits(sel, int(n_add))
             st.rerun()
         n_days = b2.number_input("Activer / prolonger (jours)", 1, 3650, acc.setting_int(acc.get_settings(), "plan_days"), key="adm_days")
-        if b2.button("✅ Activer l'abonnement", key="adm_sub"):
+        if b2.button("Activer l'abonnement", key="adm_sub"):
             acc.set_subscription(sel, int(n_days))
             st.rerun()
         b3.write("")
         b3.write("")
-        if b3.button("⛔ Retirer l'abonnement", key="adm_unsub"):
+        if b3.button("Retirer l'abonnement", key="adm_unsub"):
             acc.clear_subscription(sel)
             st.rerun()
         d1, d2 = st.columns(2)
         newpw = d1.text_input("Nouveau mot de passe pour ce compte", type="password", key="adm_resetpw")
-        if d1.button("🔑 Réinitialiser le mot de passe", key="adm_reset"):
+        if d1.button("Réinitialiser le mot de passe", key="adm_reset"):
             ok, msg = acc.set_password(sel, newpw)
             (st.success if ok else st.error)(msg)
         d2.write("")
@@ -285,14 +286,14 @@ def admin_panel(admin: dict):
             d2.caption("Vous ne pouvez ni désactiver ni supprimer votre propre compte.")
         else:
             if target["active"]:
-                if d2.button("🚫 Désactiver le compte", key="adm_off"):
+                if d2.button("Désactiver le compte", key="adm_off"):
                     acc.set_active(sel, False)
                     st.rerun()
             else:
-                if d2.button("♻️ Réactiver le compte", key="adm_on"):
+                if d2.button("Réactiver le compte", key="adm_on"):
                     acc.set_active(sel, True)
                     st.rerun()
-            with st.expander("🗑️ Supprimer ce compte"):
+            with st.expander("Supprimer ce compte"):
                 st.caption("Supprime le compte, son décompte d'analyses et, si coché, ses profils et photos enregistrés. Irréversible.")
                 wipe = st.checkbox("Supprimer aussi ses données (profils, historique, images)", value=True, key="adm_wipe")
                 sure = st.checkbox(f"Je confirme la suppression de « {sel} »", key="adm_sure")
@@ -300,7 +301,7 @@ def admin_panel(admin: dict):
                     acc.delete_user(sel, delete_data=wipe)
                     st.rerun()
 
-    st.markdown("##### ⚙️ Réglages de l'abonnement")
+    st.markdown("##### Réglages de l'abonnement")
     cfg = acc.get_settings()
     with st.form("adm_settings"):
         s1, s2 = st.columns(2)
@@ -312,7 +313,7 @@ def admin_panel(admin: dict):
         ct = s2.text_input("Contact affiché aux utilisateurs", value=cfg["contact"], key="adm_ct", placeholder="vous@exemple.fr")
         pl = st.text_input("Lien de paiement Stripe (Payment Link, paiement unique)", value=cfg["payment_link"], key="adm_pl", placeholder="https://buy.stripe.com/...")
         pid = st.text_input("Identifiant du lien (facultatif, plink_...)", value=cfg["stripe_link_id"], key="adm_pid")
-        go = st.form_submit_button("Enregistrer les réglages")
+        go = st.form_submit_button("Enregistrer les réglages", type="primary")
     if go:
         if pl.strip() and not pl.strip().startswith("https://"):
             st.error("Le lien de paiement doit commencer par https://")
@@ -323,8 +324,8 @@ def admin_panel(admin: dict):
             st.success("Réglages enregistrés. Le nombre d'analyses gratuites ne s'applique qu'aux nouveaux comptes.")
             st.rerun()
     key = _secret("STRIPE_SECRET_KEY")
-    st.caption("Clé secrète Stripe : " + (f"✅ configurée ({key[:7]}…)" if key else "❌ absente (vérification automatique des paiements désactivée ; vous pouvez activer les abonnements à la main ci-dessus)."))
-    with st.expander("📘 Comment brancher Stripe ?"):
+    st.caption("Clé secrète Stripe : " + (f"configurée ({key[:7]}…)" if key else "absente (vérification automatique des paiements désactivée ; vous pouvez activer les abonnements à la main ci-dessus)."))
+    with st.expander("Comment brancher Stripe ?"):
         st.markdown(
             "1. Créez un compte sur stripe.com et restez d'abord en **mode test**.\n"
             "2. « Payment Links » → créez un lien pour un **paiement unique** (pas un abonnement récurrent) au prix de votre offre. Copiez le lien ici.\n"
@@ -335,7 +336,21 @@ def admin_panel(admin: dict):
 
     pays = acc.list_payments()
     if pays:
-        st.markdown("##### 💶 Paiements reçus")
+        st.markdown("##### Paiements reçus")
         pdf = pd.DataFrame([{"Date": p["ts"][:16].replace("T", " "), "Compte": p["username"],
                              "Montant": f"{p['amount'] / 100:.2f} {str(p['currency'] or '').upper()}" if p["amount"] is not None else "—", "Jours": p["days"]} for p in pays])
         _stretch(st.dataframe, pdf, hide_index=True)
+
+    with st.expander("Sauvegarde et restauration des comptes"):
+        st.caption("Téléchargez régulièrement une sauvegarde : si votre hébergement efface le disque, vous pourrez restaurer vos comptes, abonnements et réglages. "
+                   "Les photos et historiques des utilisateurs ne sont pas inclus.")
+        st.download_button("Télécharger la sauvegarde", acc.backup_bytes(), "velofit_comptes.db", "application/octet-stream", key="adm_backup")
+        up = st.file_uploader("Restaurer depuis une sauvegarde (.db)", type=["db"], key="adm_restore_file")
+        if up is not None:
+            sure = st.checkbox("Je confirme : cela remplace tous les comptes actuels.", key="adm_restore_ok")
+            if st.button("Restaurer", key="adm_restore_btn", disabled=not sure):
+                ok, msg = acc.restore_from_bytes(up.getvalue())
+                (st.success if ok else st.error)(msg)
+                if ok:
+                    st.session_state.pop("auth_user", None)
+                    st.info("Reconnectez-vous pour continuer.")
