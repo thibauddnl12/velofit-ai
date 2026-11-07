@@ -68,7 +68,11 @@ html, body, .stApp{font-family:'Inter',-apple-system,'Segoe UI',sans-serif; colo
   background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.2px), radial-gradient(900px 420px at 85% -8%, rgba(198,244,50,.07), transparent 65%);
   background-size:26px 26px, auto; background-attachment:fixed; overflow-x:hidden;}
 header[data-testid="stHeader"]{background:transparent;}
-[data-testid="stToolbar"], [data-testid="stDecoration"], .stAppDeployButton, #MainMenu, footer{display:none !important;}
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"], [data-testid="stDecoration"], .stAppDeployButton, #MainMenu, footer{display:none !important;}
+/* le bouton qui ouvre / ferme la barre latérale doit toujours rester visible */
+[data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"]{display:flex !important; visibility:visible !important; opacity:1 !important;}
+[data-testid="stSidebarCollapsedControl"] button, [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"] button{color:var(--acc) !important; background:var(--panel2) !important; border:1px solid var(--line2) !important; border-radius:10px !important; min-height:2.2rem;}
+[data-testid="stSidebar"] [data-testid="stSidebarContent"]{visibility:visible !important;}
 .block-container{padding-top:3.2rem; max-width:1280px;}
 h1,h2,h3,h4,h5{font-family:var(--head); color:var(--txt); letter-spacing:-.01em;}
 .stApp p, .stApp li, .stApp label, .stApp span, .stApp [data-testid="stMarkdownContainer"]{color:inherit;}
