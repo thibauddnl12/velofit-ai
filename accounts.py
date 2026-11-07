@@ -9,13 +9,16 @@ import contextlib
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import shutil
 import sqlite3
+import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import velofit_core as core
 
@@ -416,3 +419,65 @@ def list_payments(limit=50) -> list[dict]:
     with _db() as con:
         rows = con.execute("SELECT * FROM payments ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------------------
+#  SAUVEGARDE / RESTAURATION (utile sur un hébergement au disque éphémère)
+# ------------------------------------------------------------------------------
+def backup_bytes() -> bytes:
+    """Copie cohérente de la base de comptes (comptes, quotas, abonnements, paiements, réglages)."""
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        src = _conn()
+        dst = sqlite3.connect(tmp)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+        return Path(tmp).read_bytes()
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def restore_from_bytes(data: bytes):
+    """Remplace la base par une sauvegarde après vérification. Retourne (ok, message)."""
+    if not data.startswith(b"SQLite format 3\x00"):
+        return False, "Ce fichier n'est pas une sauvegarde valide."
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        con = sqlite3.connect(tmp)
+        try:
+            tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {"users", "usage", "settings", "payments"} <= tables:
+                return False, "Sauvegarde incomplète : tables manquantes."
+            n_admin = con.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
+            n_users = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        except sqlite3.DatabaseError:
+            return False, "Sauvegarde illisible."
+        finally:
+            con.close()
+        if n_admin < 1:
+            return False, "Cette sauvegarde ne contient aucun administrateur."
+        dest = core.DATA_DIR / "accounts.db"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            shutil.copyfile(dest, dest.with_name(f"accounts.db.avant-restauration-{now():%Y%m%d-%H%M%S}"))
+        for suffix in ("-wal", "-shm"):
+            try:
+                os.unlink(str(dest) + suffix)
+            except OSError:
+                pass
+        shutil.copyfile(tmp, dest)
+        return True, f"Sauvegarde restaurée ({n_users} comptes)."
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass

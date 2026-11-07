@@ -22,25 +22,21 @@ ICONS = {
 }
 
 _HERO_SVG = """
-<svg class="hero-art" viewBox="0 0 420 250" role="img" aria-label="Schéma de mesure d'une position de cycliste">
-  <defs><linearGradient id="scan" x1="0" x2="1"><stop offset="0" stop-color="#c6f432" stop-opacity="0"/><stop offset="1" stop-color="#c6f432" stop-opacity=".16"/></linearGradient></defs>
-  <g class="bike" fill="none" stroke="#6b7a90" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="90" cy="172" r="52"/><circle cx="330" cy="172" r="52"/>
-    <path d="M90 172L190 174L165 98L90 172M165 98L300 104L190 174M300 104L330 172M300 104L306 92L326 94M150 94H184"/>
+<svg class="hero-art" viewBox="0 0 420 250" role="img" aria-label="Tableau de mesure des angles">
+  <defs><linearGradient id="sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c6f432" stop-opacity="0"/><stop offset="1" stop-color="#c6f432" stop-opacity=".38"/></linearGradient></defs>
+  <g fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1">
+    <circle cx="120" cy="125" r="100"/><circle cx="120" cy="125" r="74" stroke-dasharray="2 5"/><circle cx="120" cy="125" r="48"/>
+    <path d="M20 125H220M120 25V225"/>
   </g>
-  <g class="rider" fill="none" stroke="#eef2f7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M165 88L255 52L290 82L310 94M165 88L224 128L202 180"/><circle cx="272" cy="36" r="11"/>
-  </g>
-  <path class="arc" d="M236 112A20 20 0 0 1 238 144" fill="none" stroke="#c6f432" stroke-width="2"/>
-  <path class="arc" d="M188 88A26 26 0 0 1 200 76" fill="none" stroke="#5ec8ff" stroke-width="2"/>
-  <g fill="#06090e" stroke="#c6f432" stroke-width="2">
-    <circle class="node" cx="165" cy="88" r="5"/><circle class="node" cx="255" cy="52" r="5"/><circle class="node" cx="290" cy="82" r="5"/>
-    <circle class="node" cx="224" cy="128" r="5"/><circle class="node" cx="202" cy="180" r="5"/>
-  </g>
-  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" letter-spacing=".05em" stroke="#0c1118" stroke-width="4" paint-order="stroke">
-    <text x="238" y="152" fill="#c6f432">GENOU 147°</text><text x="112" y="64" fill="#5ec8ff">TRONC 44°</text>
-  </g>
-  <rect class="scan" x="0" y="8" width="70" height="232" fill="url(#scan)"/>
+  <path d="M120.0 25.0L120.0 33.0M128.7 25.4L128.4 29.4M137.4 26.5L136.7 30.5M145.9 28.4L144.8 32.3M154.2 31.0L152.8 34.8M162.3 34.4L160.6 38.0M170.0 38.4L166.0 45.3M177.4 43.1L175.1 46.4M184.3 48.4L181.7 51.5M190.7 54.3L187.9 57.1M196.6 60.7L193.5 63.3M201.9 67.6L198.6 69.9M206.6 75.0L199.7 79.0M210.6 82.7L207.0 84.4M214.0 90.8L210.2 92.2M216.6 99.1L212.7 100.2M218.5 107.6L214.5 108.3M219.6 116.3L215.6 116.6M220.0 125.0L212.0 125.0M219.6 133.7L215.6 133.4M218.5 142.4L214.5 141.7M216.6 150.9L212.7 149.8M214.0 159.2L210.2 157.8M210.6 167.3L207.0 165.6M206.6 175.0L199.7 171.0M201.9 182.4L198.6 180.1M196.6 189.3L193.5 186.7M190.7 195.7L187.9 192.9M184.3 201.6L181.7 198.5M177.4 206.9L175.1 203.6M170.0 211.6L166.0 204.7M162.3 215.6L160.6 212.0M154.2 219.0L152.8 215.2M145.9 221.6L144.8 217.7M137.4 223.5L136.7 219.5M128.7 224.6L128.4 220.6M120.0 225.0L120.0 217.0M111.3 224.6L111.6 220.6M102.6 223.5L103.3 219.5M94.1 221.6L95.2 217.7M85.8 219.0L87.2 215.2M77.7 215.6L79.4 212.0M70.0 211.6L74.0 204.7M62.6 206.9L64.9 203.6M55.7 201.6L58.3 198.5M49.3 195.7L52.1 192.9M43.4 189.3L46.5 186.7M38.1 182.4L41.4 180.1M33.4 175.0L40.3 171.0M29.4 167.3L33.0 165.6M26.0 159.2L29.8 157.8M23.4 150.9L27.3 149.8M21.5 142.4L25.5 141.7M20.4 133.7L24.4 133.4M20.0 125.0L28.0 125.0M20.4 116.3L24.4 116.6M21.5 107.6L25.5 108.3M23.4 99.1L27.3 100.2M26.0 90.8L29.8 92.2M29.4 82.7L33.0 84.4M33.4 75.0L40.3 79.0M38.1 67.6L41.4 69.9M43.4 60.7L46.5 63.3M49.3 54.3L52.1 57.1M55.7 48.4L58.3 51.5M62.6 43.1L64.9 46.4M70.0 38.4L74.0 45.3M77.7 34.4L79.4 38.0M85.8 31.0L87.2 34.8M94.1 28.4L95.2 32.3M102.6 26.5L103.3 30.5M111.3 25.4L111.6 29.4" stroke="rgba(255,255,255,.35)" stroke-width="1" fill="none"/>
+  <g><path d="M120 125L220 125A100 100 0 0 0 170.0 38.4Z" fill="url(#sw)" transform="rotate(0 120 125)"/>
+    <path d="M120 125H220" stroke="#c6f432" stroke-width="1.6"/>
+    <animateTransform attributeName="transform" type="rotate" from="0 120 125" to="360 120 125" dur="8s" repeatCount="indefinite"/></g>
+  <circle class="node" cx="157.0" cy="60.9" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/><circle class="node" cx="189.5" cy="150.3" r="4.5" fill="#06090e" stroke="#5ec8ff" stroke-width="2"/><circle class="node" cx="94.7" cy="194.5" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/><circle class="node" cx="50.5" cy="99.7" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" text-anchor="middle">
+    <text x="120" y="134" font-size="30" font-weight="600" fill="#eef2f7">82</text>
+    <text x="120" y="152" font-size="9" letter-spacing=".18em" fill="#8b97a8">SCORE / 100</text></g>
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" letter-spacing=".08em"><text x="250" y="62" fill="#8b97a8">GENOU</text><text x="410" y="62" fill="#eef2f7" text-anchor="end">147°</text><rect x="250" y="69" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="69" width="99" height="4" rx="2" fill="#c6f432"/><text x="250" y="96" fill="#8b97a8">TRONC</text><text x="410" y="96" fill="#eef2f7" text-anchor="end">44°</text><rect x="250" y="103" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="103" width="64" height="4" rx="2" fill="#c6f432"/><text x="250" y="130" fill="#8b97a8">HANCHE</text><text x="410" y="130" fill="#eef2f7" text-anchor="end">118°</text><rect x="250" y="137" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="137" width="114" height="4" rx="2" fill="#5ec8ff"/><text x="250" y="164" fill="#8b97a8">ÉPAULE</text><text x="410" y="164" fill="#eef2f7" text-anchor="end">92°</text><rect x="250" y="171" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="171" width="88" height="4" rx="2" fill="#c6f432"/></g>
 </svg>"""
 
 
