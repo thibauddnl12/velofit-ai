@@ -236,7 +236,13 @@ class _TasksBackend:
             running_mode=vision.RunningMode.IMAGE if static else vision.RunningMode.VIDEO,
             num_poses=1, min_pose_detection_confidence=0.5,
         )
-        self.landmarker = vision.PoseLandmarker.create_from_options(opts)
+        try:
+            self.landmarker = vision.PoseLandmarker.create_from_options(opts)
+        except OSError as exc:  # bibliothèque système manquante sur le serveur (ex. libEGL, libGLESv2)
+            raise RuntimeError(
+                "Le moteur de détection (mediapipe) ne peut pas démarrer : une bibliothèque système est manquante sur le serveur "
+                f"({str(exc)[:200]}). Ajoutez-la au fichier packages.txt (ex. libegl1, libgles2) puis redémarrez l'application."
+            ) from exc
 
     @staticmethod
     def _model_path(name):
