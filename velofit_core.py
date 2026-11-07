@@ -1209,7 +1209,9 @@ def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, stu
     rows = []
     for k in ORDER:
         rows.append(dict(label=META[k]["label"], value=f"{m[k]:.1f}°", target=f"{ranges[k][0]}–{ranges[k][1]}°",
-                         status=STATUS[ev[k]["status"]][1], color=STATUS[ev[k]["status"]][0]))
+                         status=STATUS[ev[k]["status"]][1], color=STATUS[ev[k]["status"]][0], key=k, v=float(m[k]),
+                         lo=float(ranges[k][0]), hi=float(ranges[k][1]), vmin=float(META[k]["vmin"]), vmax=float(META[k]["vmax"]),
+                         st=ev[k]["status"]))
     todo = [dict(title=r["title"], diag=_plain(r["diag"]), actions=[_plain(a) for a in r["actions"]])
             for r in recs if r["status"] != "ok"]
     return dict(
@@ -1285,7 +1287,8 @@ def _pdf_text(s):
 
 def _font(size, bold=False):
     from PIL import ImageFont
-    names = ["arialbd.ttf", "DejaVuSans-Bold.ttf", "Helvetica-Bold.ttf"] if bold else ["arial.ttf", "DejaVuSans.ttf", "Helvetica.ttf"]
+    names = (["arialbd.ttf", "DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"] if bold else
+             ["arial.ttf", "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"])
     for n in names:
         try:
             return ImageFont.truetype(n, size)
@@ -1297,8 +1300,8 @@ def _font(size, bold=False):
         return ImageFont.load_default()
 
 
-def report_pdf(r):
-    """PDF A4 sans dépendance externe (Pillow) : texte rendu en image à 150 dpi."""
+def _report_pdf_pillow(r):
+    """Repli : PDF A4 sans dépendance externe (Pillow) : texte rendu en image à 150 dpi."""
     from PIL import Image, ImageDraw
 
     W, H, M = 1240, 1754, 70
@@ -1424,4 +1427,218 @@ def report_pdf(r):
         ImageDraw.Draw(img).text((W - M - 80, H - 60), f"{n} / {len(pages)}", font=_font(20), fill=MUT)
     buf = io.BytesIO()
     pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=150.0)
+    return buf.getvalue()
+
+
+def report_pdf(r):
+    """Rapport PDF A4 vectoriel (reportlab). Se replie sur la version Pillow si reportlab est absent."""
+    try:
+        return _report_pdf_reportlab(r)
+    except ImportError:
+        return _report_pdf_pillow(r)
+
+
+def _report_pdf_reportlab(r):
+    from xml.sax.saxutils import escape as esc
+
+    from reportlab.graphics.shapes import Circle, Drawing, Rect, String, Wedge
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import (BaseDocTemplate, Frame, Image as RLImage, KeepTogether, PageTemplate, Paragraph,
+                                    Spacer, Table, TableStyle)
+
+    NAVY, INK, MUT, LINE = colors.HexColor("#0b1020"), colors.HexColor("#0f172a"), colors.HexColor("#64748b"), colors.HexColor("#e2e8f0")
+    ACC = colors.HexColor("#65a30d")
+    PW, PH = A4
+    LM = 18 * mm
+    CW = PW - 2 * LM
+    T = lambda x: esc(_pdf_text(x))  # noqa: E731
+
+    def st(name, **kw):
+        base = dict(fontName="Helvetica", fontSize=9.5, leading=13.5, textColor=INK, alignment=TA_LEFT)
+        base.update(kw)
+        return ParagraphStyle(name, **base)
+
+    S = dict(
+        h1=st("h1", fontName="Helvetica-Bold", fontSize=20, leading=24, spaceAfter=2),
+        h2=st("h2", fontName="Helvetica-Bold", fontSize=13.5, leading=17, spaceBefore=14, spaceAfter=6),
+        h3=st("h3", fontName="Helvetica-Bold", fontSize=10.5, leading=14, spaceBefore=6, spaceAfter=1),
+        p=st("p"), mut=st("mut", textColor=MUT, fontSize=9, leading=12.5), small=st("small", textColor=MUT, fontSize=7.8, leading=10.5),
+        li=st("li", leftIndent=12, bulletIndent=2, spaceAfter=1.5),
+        cell=st("cell", fontSize=9.5, leading=12), cellb=st("cellb", fontName="Helvetica-Bold", fontSize=9.5, leading=12),
+        th=st("th", fontName="Helvetica-Bold", fontSize=7.8, leading=10, textColor=MUT),
+    )
+
+    def hexcol(h):
+        return colors.HexColor(h)
+
+    def gauge_cell(row):
+        w, h = 150, 16
+        d = Drawing(w, h)
+        span = row["vmax"] - row["vmin"]
+        px = lambda v: max(0, min(w, (v - row["vmin"]) / span * w))  # noqa: E731
+        d.add(Rect(0, 6, w, 4, fillColor=colors.HexColor("#e5e9f0"), strokeColor=None, rx=2, ry=2))
+        z0, z1 = px(row["lo"]), px(row["hi"])
+        d.add(Rect(z0, 6, max(2, z1 - z0), 4, fillColor=colors.HexColor("#86efac"), strokeColor=None))
+        d.add(Rect(px(row["v"]) - 1.5, 1, 3, 14, fillColor=hexcol(row["color"]), strokeColor=colors.white, strokeWidth=.6))
+        return d
+
+    def pill(text, color):
+        d = Drawing(74, 15)
+        d.add(Rect(0, 0, 74, 15, rx=7.5, ry=7.5, fillColor=hexcol(color), strokeColor=None))
+        d.add(String(37, 4.2, _pdf_text(text), fontName="Helvetica-Bold", fontSize=7.6, fillColor=colors.white, textAnchor="middle"))
+        return d
+
+    def score_dial(score, col):
+        size = 104
+        d = Drawing(size, size)
+        c = size / 2
+        d.add(Circle(c, c, 50, fillColor=colors.HexColor("#e5e9f0"), strokeColor=None))
+        p = max(0.001, min(1, score / 100.0))
+        d.add(Wedge(c, c, 50, 90 - 360 * p, 90, fillColor=hexcol(col), strokeColor=None) if p < 0.999 else Circle(c, c, 50, fillColor=hexcol(col), strokeColor=None))
+        d.add(Circle(c, c, 38, fillColor=colors.white, strokeColor=None))
+        d.add(String(c, c - 4, f"{score:.0f}", fontName="Helvetica-Bold", fontSize=28, fillColor=INK, textAnchor="middle"))
+        d.add(String(c, c - 17, "/ 100", fontName="Helvetica", fontSize=8, fillColor=MUT, textAnchor="middle"))
+        return d
+
+    studio = _pdf_text(r["studio"])
+    logo_reader = None
+    if r.get("logo"):
+        try:
+            logo_reader = ImageReader(io.BytesIO(r["logo"]))
+        except Exception:
+            logo_reader = None
+
+    def on_page(canv, doc):
+        canv.saveState()
+        first = doc.page == 1
+        hh = 30 * mm if first else 13 * mm
+        canv.setFillColor(NAVY)
+        canv.rect(0, PH - hh, PW, hh, stroke=0, fill=1)
+        canv.setFillColor(colors.HexColor("#c6f432"))
+        canv.rect(0, PH - hh, PW, 1.2 * mm, stroke=0, fill=1)
+        x = LM
+        if first and logo_reader is not None:
+            try:
+                iw, ih = logo_reader.getSize()
+                lh = 16 * mm
+                lw = lh * iw / ih
+                canv.drawImage(logo_reader, x, PH - hh + 8 * mm, width=lw, height=lh, mask="auto")
+                x += lw + 5 * mm
+            except Exception:
+                pass
+        canv.setFillColor(colors.white)
+        if first:
+            canv.setFont("Helvetica-Bold", 20)
+            canv.drawString(x, PH - 14 * mm, studio)
+            canv.setFont("Helvetica", 10)
+            canv.setFillColor(colors.HexColor("#94a3b8"))
+            canv.drawString(x, PH - 21 * mm, _pdf_text(f"Rapport d'analyse posturale  -  {r['client']}  -  {r['date']}"))
+        else:
+            canv.setFont("Helvetica-Bold", 10)
+            canv.drawString(LM, PH - 8.6 * mm, studio)
+            canv.setFont("Helvetica", 8.5)
+            canv.setFillColor(colors.HexColor("#94a3b8"))
+            canv.drawRightString(PW - LM, PH - 8.6 * mm, _pdf_text(f"{r['client']}  -  {r['date']}"))
+        canv.setStrokeColor(LINE)
+        canv.line(LM, 14 * mm, PW - LM, 14 * mm)
+        canv.setFillColor(MUT)
+        canv.setFont("Helvetica", 7.5)
+        canv.drawString(LM, 9.5 * mm, "Outil indicatif - ne remplace pas l'avis d'un professionnel du bike-fitting.")
+        canv.drawRightString(PW - LM, 9.5 * mm, f"Page {doc.page}")
+        canv.restoreState()
+
+    buf = io.BytesIO()
+    doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=LM, rightMargin=LM, topMargin=36 * mm, bottomMargin=20 * mm,
+                          title=f"Rapport {studio}", author=studio)
+    f_first = Frame(LM, 20 * mm, CW, PH - 20 * mm - 36 * mm, id="f1", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    f_next = Frame(LM, 20 * mm, CW, PH - 20 * mm - 20 * mm, id="f2", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    doc.addPageTemplates([PageTemplate(id="first", frames=[f_first], onPage=on_page, autoNextPageTemplate="next"),
+                          PageTemplate(id="next", frames=[f_next], onPage=on_page)])
+
+    col = "#34d399" if r["score"] >= 80 else ("#fbbf24" if r["score"] >= 60 else "#fb7185")
+    E = []
+
+    # --- synthèse
+    info = [[Paragraph("DISCIPLINE", S["th"]), Paragraph("OBJECTIF", S["th"]), Paragraph("SOUPLESSE", S["th"]), Paragraph("TAILLE", S["th"]), Paragraph("QUALITÉ DE PRISE DE VUE", S["th"])],
+            [Paragraph(T(r["discipline"]), S["cellb"]), Paragraph(T(r["goal"]), S["cellb"]), Paragraph(T(r["flex"]), S["cellb"]),
+             Paragraph(f"{r['height']} cm", S["cellb"]), Paragraph(f"{r['quality']:.0f} / 100", S["cellb"])]]
+    right = [Paragraph(T(r["verdict"]), S["h1"]), Paragraph(T(r["verdict_sub"]), S["mut"]), Spacer(1, 6)]
+    top = Table([[score_dial(r["score"], col), right]], colWidths=[40 * mm, CW - 40 * mm])
+    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    E += [top, Spacer(1, 8)]
+    infot = Table(info, colWidths=[CW * .27, CW * .17, CW * .17, CW * .12, CW * .27])
+    infot.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                               ("LEFTPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    E += [infot, Spacer(1, 10)]
+
+    good = [x["label"] for x in r["rows"] if x.get("st", "ok") == "ok"]
+    watch = [x for x in r["rows"] if x.get("st", "ok") != "ok"]
+    left_col = [Paragraph("Points solides", S["h3"])] + ([Paragraph(T(g), S["li"], bulletText="•") for g in good] or [Paragraph("Aucun angle dans la cible pour l'instant.", S["mut"])])
+    right_col = [Paragraph("À travailler en priorité", S["h3"])] + (
+        [Paragraph(f"{T(x['label'])} : {T(x['value'])} (cible {T(x['target'])})", S["li"], bulletText="•") for x in watch] or [Paragraph("Rien à corriger : conservez votre réglage.", S["mut"])])
+    two = Table([[left_col, right_col]], colWidths=[CW / 2, CW / 2])
+    two.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEAFTER", (0, 0), (0, 0), 0.6, LINE), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("LEFTPADDING", (1, 0), (1, 0), 14)]))
+    E += [Paragraph("Synthèse", S["h2"]), two]
+
+    # --- photo
+    if r["image_png"]:
+        try:
+            ir = ImageReader(io.BytesIO(r["image_png"]))
+            iw, ih = ir.getSize()
+            maxw, maxh = CW, 98 * mm
+            k = min(maxw / iw, maxh / ih)
+            E += [Spacer(1, 8), RLImage(io.BytesIO(r["image_png"]), width=iw * k, height=ih * k, hAlign="CENTER"),
+                  Paragraph("Image annotée : points articulaires détectés et angles mesurés.", S["small"])]
+        except Exception:
+            pass
+
+    # --- mesures
+    E += [Paragraph("Mesures détaillées", S["h2"])]
+    rows = [[Paragraph(h, S["th"]) for h in ("MESURE", "VALEUR", "CIBLE", "POSITION DANS LA PLAGE", "STATUT")]]
+    for x in r["rows"]:
+        rows.append([Paragraph(T(x["label"]), S["cell"]), Paragraph(f"<b>{T(x['value'])}</b>", S["cell"]), Paragraph(T(x["target"]), S["cell"]),
+                     gauge_cell(x) if "vmin" in x else "", pill(x["status"], x["color"])])
+    mt = Table(rows, colWidths=[CW * .22, CW * .12, CW * .14, CW * .34, CW * .18], repeatRows=1)
+    mt.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, LINE), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
+    E += [mt, Paragraph("La zone verte de chaque jauge est la plage cible adaptée à votre discipline, votre souplesse et votre objectif ; le trait coloré indique votre mesure.", S["small"])]
+    E[-3:] = [KeepTogether(E[-3:])]
+
+    # --- plan d'action
+    E += [Paragraph("Plan d'action priorisé", S["h2"])]
+    if not r["todo"]:
+        E.append(Paragraph("Aucun réglage prioritaire : tous les angles sont dans les plages cibles. Refaites un contrôle après tout changement de matériel.", S["p"]))
+    for i, t in enumerate(r["todo"], 1):
+        block = [Paragraph(f"{i}. {T(t['title'])}", S["h3"]), Paragraph(T(t["diag"]), S["mut"])]
+        block += [Paragraph(T(a), S["li"], bulletText="-") for a in t["actions"]]
+        E.append(KeepTogether(block))
+    if r["todo"]:
+        E.append(Spacer(1, 4))
+        E.append(Paragraph("Méthode : modifiez un seul paramètre à la fois, par petits paliers, testez une sortie, puis refaites une analyse pour valider le changement.", S["mut"]))
+
+    # --- compléments
+    for title, body in r["extras"]:
+        E.append(KeepTogether([Paragraph(T(title), S["h2"]), Paragraph(T(body), S["p"])]))
+
+    # --- protocole et lexique
+    proto = [Paragraph("Pour refaire une mesure fiable", S["h2"])]
+    for line in ("Vélo stabilisé sur home-trainer, position de pédalage naturelle.",
+                 "Appareil à hauteur de hanche, à environ 3 m, perpendiculaire au vélo (profil strict).",
+                 "Photo au point mort bas (manivelle à 6 h) ou vidéo de 10 à 15 s de pédalage régulier.",
+                 "Vêtements ajustés et contrastés, bon éclairage, corps entier dans le cadre."):
+        proto.append(Paragraph(T(line), S["li"], bulletText="•"))
+    E.append(KeepTogether(proto))
+    gl = [(t, d) for t, d in GLOSSARY_TERMS[:8]]
+    if gl:
+        E.append(Paragraph("Lexique", S["h2"]))
+        for t, d in gl:
+            E.append(KeepTogether([Paragraph(f"<b>{T(t)}</b> — {T(d)}", S["p"]), Spacer(1, 3)]))
+    E += [Spacer(1, 10), Paragraph(T(r["disclaimer"]), S["small"])]
+
+    doc.build(E)
     return buf.getvalue()

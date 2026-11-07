@@ -212,6 +212,23 @@ a{color:var(--acc);}
   transition:background-color 9999s ease-out 0s;}
 .stApp [data-testid="stTextInputRootElement"], .stApp [data-testid="stNumberInputContainer"]{background:#111823 !important; border-radius:10px;}
 
+
+/* ---------- messages (erreur, succès, info) : toujours lisibles ---------- */
+.stApp [data-testid="stAlert"]{background:#111823 !important; border:1px solid var(--line2) !important; border-radius:12px !important;}
+.stApp [data-testid="stAlert"] *{color:#eef2f7 !important; -webkit-text-fill-color:#eef2f7 !important; opacity:1 !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentError"]){background:rgba(251,113,133,.14) !important; border-color:rgba(251,113,133,.65) !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) *{color:#ffc2cb !important; -webkit-text-fill-color:#ffc2cb !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]){background:rgba(251,191,36,.12) !important; border-color:rgba(251,191,36,.6) !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) *{color:#fde7a6 !important; -webkit-text-fill-color:#fde7a6 !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]){background:rgba(52,211,153,.12) !important; border-color:rgba(52,211,153,.6) !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) *{color:#b6f3dc !important; -webkit-text-fill-color:#b6f3dc !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]){background:rgba(94,200,255,.1) !important; border-color:rgba(94,200,255,.5) !important;}
+.stApp [data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) *{color:#cdeeff !important; -webkit-text-fill-color:#cdeeff !important;}
+/* champ en état d'erreur ou rempli : le texte reste clair */
+.stApp input[aria-invalid="true"], .stApp [aria-invalid="true"] input, .stApp input:focus, .stApp input:not(:placeholder-shown){
+  color:#eef2f7 !important; -webkit-text-fill-color:#eef2f7 !important; background-color:transparent !important;}
+.stApp [data-baseweb="input"][aria-invalid="true"], .stApp [data-baseweb="base-input"][aria-invalid="true"]{background:#111823 !important; border-color:#fb7185 !important;}
+
 /* ---------- téléphone ---------- */
 @media (max-width: 640px){
   .block-container{padding:3.6rem .85rem 3rem;}
