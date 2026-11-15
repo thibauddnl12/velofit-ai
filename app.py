@@ -1,13 +1,14 @@
 # ==============================================================================
-#  VeloFit AI Studio v3 — Laboratoire d'analyse posturale pour le vélo
+#  VeloFit AI Studio v4 — Laboratoire d'analyse posturale pour le vélo
 #  Lancement :  streamlit run app.py
-#  (la logique métier est dans velofit_core.py, à placer dans le même dossier)
+#  Fichiers à placer dans le même dossier : velofit_core.py, accounts.py, auth_ui.py,
+#  mailer.py, ui_kit.py et bike3d.py
 # ==============================================================================
 import hashlib
+import html as _html
 import os
 import re
 import tempfile
-from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
 
@@ -16,8 +17,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+try:
+    import streamlit.components.v1 as components
+except Exception:  # futures versions sans ce module : st.iframe prend le relais
+    components = None
+
 import accounts as acc
 import auth_ui
+import bike3d
 import ui_kit
 import velofit_core as core
 from velofit_core import META, ORDER, STATUS
@@ -52,6 +59,30 @@ def note(txt):
     H(f'<div class="note">{txt}</div>')
 
 
+def section(title, sub="", first=False):
+    """Titre de section avec une phrase d'explication : le même repère visuel partout."""
+    H(ui_kit.section(title, sub, first))
+
+
+def embed_html(page: str, height: int) -> bool:
+    """Affiche une page HTML autonome (le vélo 3D). Retourne False si la version de Streamlit ne le permet pas.
+
+    st.iframe remplace st.components.v1.html, déprécié depuis Streamlit 1.56 : on essaie le premier, puis le second."""
+    if hasattr(st, "iframe"):
+        try:
+            st.iframe(page, height=height)
+            return True
+        except Exception:
+            pass
+    if components is not None and hasattr(components, "html"):
+        try:
+            components.html(page, height=height, scrolling=False)
+            return True
+        except Exception:
+            pass
+    return False
+
+
 # ------------------------------------------------------------------------------
 #  CONNEXION OBLIGATOIRE ET STOCKAGE ISOLÉ PAR COMPTE
 # ------------------------------------------------------------------------------
@@ -61,92 +92,204 @@ IS_ADMIN = user["role"] == "admin"
 _STORE_FNS = ("list_profiles", "load_profile", "save_profile", "load_history", "add_history", "update_history_entry",
               "delete_history_entry", "load_history_image", "profile_summary")
 store = SimpleNamespace(**{n: partial(getattr(core, n), scope=SC) for n in _STORE_FNS})
+ss = st.session_state
 
 
 # ------------------------------------------------------------------------------
-#  ÉTAT, PROFILS
+#  ÉTAT ET PROFIL
 # ------------------------------------------------------------------------------
-DEFAULTS = dict(height=175, inseam=0, shoulder_w=0, flex="Moyenne", discipline="Route / Endurance", goal="Équilibré",
+DEFAULTS = dict(height=175, weight=0, inseam=0, shoulder_w=0, flex="Moyenne", discipline="Route / Endurance", goal="Équilibré",
                 side_choice="Auto", complaints=[], target_score=85, use_mob=False, learn=True, show_grid=False,
-                mode="Cycliste", profile_name="Invité", studio="", logo_png=None)
-for _k, _v in DEFAULTS.items():
-    st.session_state.setdefault(_k, _v)
-for _t in core.MOBILITY_TESTS:
-    st.session_state.setdefault("mob_" + _t["key"], _t["options"][len(_t["options"]) // 2])
-
-PROFILE_KEYS = ["height", "inseam", "shoulder_w", "flex", "discipline", "goal", "target_score", "use_mob", "complaints"] + \
-               ["mob_" + t["key"] for t in core.MOBILITY_TESTS]
+                mode="Cycliste", profile_name="", studio="", logo_png=None)
+FLEX_OPTS = ["Limitée", "Moyenne", "Très souple"]
+GOAL_OPTS = ["Confort", "Équilibré", "Performance"]
+MOB_KEYS = ["mob_" + t["key"] for t in core.MOBILITY_TESTS]
+PROFILE_KEYS = ["height", "weight", "inseam", "shoulder_w", "flex", "discipline", "goal", "target_score", "use_mob", "complaints"] + MOB_KEYS
+LIMITS = dict(height=(140, 215), weight=(0, 200), inseam=(0, 110), shoulder_w=(0, 60), target_score=(50, 100))
 NEW_LABEL = "+ Nouveau profil"
 
 
-def _load_profile_cb():
-    sel = st.session_state.get("profile_sel", NEW_LABEL)
-    if sel == NEW_LABEL:
-        return
-    p = store.load_profile(sel)
-    st.session_state["profile_name"] = sel
+def _mob_default(t):
+    return t["options"][len(t["options"]) // 2]
+
+
+for _k, _v in DEFAULTS.items():
+    ss.setdefault(_k, list(_v) if isinstance(_v, list) else _v)
+for _t in core.MOBILITY_TESTS:
+    ss.setdefault("mob_" + _t["key"], _mob_default(_t))
+# Les réglages restent mémorisés même quand leur champ n'est pas affiché (ex. pendant la création du profil).
+for _k in PROFILE_KEYS + ["profile_name", "mode", "learn", "side_choice", "show_grid"]:
+    ss[_k] = ss[_k]
+
+
+def reset_profile_fields():
+    for k in PROFILE_KEYS:
+        if k in DEFAULTS:
+            ss[k] = list(DEFAULTS[k]) if isinstance(DEFAULTS[k], list) else DEFAULTS[k]
+    for t in core.MOBILITY_TESTS:
+        ss["mob_" + t["key"]] = _mob_default(t)
+    ss["profile_name"] = ""
+
+
+def apply_profile(name):
+    """Charge un profil enregistré dans l'état courant, en corrigeant les valeurs absentes ou hors limites."""
+    p = store.load_profile(name)
+    ss["profile_name"] = name
     for k in PROFILE_KEYS:
         if k in p:
-            st.session_state[k] = p[k]
-    if st.session_state["discipline"] not in core.BASE_RANGES:
-        st.session_state["discipline"] = DEFAULTS["discipline"]
-    st.session_state["complaints"] = [c for c in st.session_state["complaints"] if c in core.COMPLAINTS]
+            ss[k] = p[k]
+    if "weight" not in p:
+        ss["weight"] = 0                      # profil créé avant l'ajout du poids : à compléter
+    for k, (lo, hi) in LIMITS.items():
+        try:
+            ss[k] = max(lo, min(hi, int(round(float(ss[k])))))
+        except (TypeError, ValueError):
+            ss[k] = DEFAULTS[k]
+    ss["target_score"] = int(round(ss["target_score"] / 5) * 5)
+    if ss["discipline"] not in core.BASE_RANGES:
+        ss["discipline"] = DEFAULTS["discipline"]
+    if ss["flex"] not in FLEX_OPTS:
+        ss["flex"] = DEFAULTS["flex"]
+    if ss["goal"] not in GOAL_OPTS:
+        ss["goal"] = DEFAULTS["goal"]
+    ss["use_mob"] = bool(ss["use_mob"])
+    ss["complaints"] = [c for c in (ss["complaints"] or []) if c in core.COMPLAINTS]
+    for t in core.MOBILITY_TESTS:
+        if ss["mob_" + t["key"]] not in t["options"]:
+            ss["mob_" + t["key"]] = _mob_default(t)
+
+
+def _load_profile_cb():
+    sel = ss.get("profile_sel", NEW_LABEL)
+    if sel == NEW_LABEL:
+        reset_profile_fields()
+    else:
+        apply_profile(sel)
 
 
 def mobility_answers():
     ans = {}
     for t in core.MOBILITY_TESTS:
-        v = st.session_state.get("mob_" + t["key"], t["options"][len(t["options"]) // 2])
+        v = ss.get("mob_" + t["key"], _mob_default(t))
         ans[t["key"]] = t["options"].index(v) if v in t["options"] else len(t["options"]) // 2
     return ans
 
 
+def save_profile_now(require_weight=False):
+    """Enregistre le profil affiché. Retourne (ok, nom ou message d'erreur)."""
+    name = (ss["profile_name"] or "").strip()
+    if not name:
+        return False, "Donnez un nom au profil avant de l'enregistrer."
+    if require_weight and int(ss["weight"]) < 30:
+        return False, "Indiquez votre poids (en kg) : il sert au calcul de la pression des pneus et des watts par kilo."
+    store.save_profile(name, {k: ss[k] for k in PROFILE_KEYS})   # (le champ « nom » existe déjà à l'écran : on ne le réécrit pas ici)
+    return True, name
+
+
+# --- au début de la session : le dernier profil enregistré est rechargé automatiquement
+if ss.get("_pending_sel") is not None:
+    ss["profile_sel"] = ss.pop("_pending_sel")
+profiles = store.list_profiles()
+if ss.get("_boot") != SC:
+    ss["_boot"] = SC
+    reset_profile_fields()
+    if profiles:
+        apply_profile(profiles[0])
+        ss["profile_sel"] = profiles[0]
+if ss.get("profile_sel") not in [NEW_LABEL] + profiles:
+    ss["profile_sel"] = ss["profile_name"] if ss["profile_name"] in profiles else NEW_LABEL
+
+fitter = ss["mode"].startswith("Fitter")
+who = "client" if fitter else "profil"
+
+
+def profile_fields(first=False):
+    """Champs du profil, dans l'ordre où ils comptent pour les calculs. À appeler dans un st.form."""
+    H(ui_kit.form_section("1 · Vélo et pratique", "Le type de vélo fixe les angles visés : on ne règle pas un vélo de triathlon comme un VTT.", first=True))
+    c1, c2 = st.columns(2)
+    c1.selectbox("Type de vélo / discipline", list(core.BASE_RANGES.keys()), key="discipline")
+    c2.select_slider("Objectif", GOAL_OPTS, key="goal", help="Confort : position plus relevée. Performance : position plus basse et plus aérodynamique.")
+    H(ui_kit.form_section("2 · Morphologie", "La taille et l'entrejambe servent à convertir les angles en millimètres ; le poids, à la pression des pneus et aux watts par kilo."))
+    a, b = st.columns(2)
+    a.number_input("Taille (cm)", 140, 215, step=1, key="height")
+    b.number_input("Poids (kg)", 0, 200, step=1, key="weight", help="À saisir : 0 = non renseigné. Sert à la pression des pneus et aux watts par kilo.")
+    a.number_input("Entrejambe (cm) — optionnel", 0, 110, step=1, key="inseam", help="0 = non renseigné. Sert aux formules de hauteur de selle et à la longueur de manivelle.")
+    b.number_input("Largeur d'épaules (cm) — optionnel", 0, 60, step=1, key="shoulder_w", help="Distance entre les deux points osseux des épaules. Sert à la largeur de cintre.")
+    st.select_slider("Souplesse (ischios / dos)", FLEX_OPTS, key="flex", help="Une souplesse limitée demande une position plus relevée.")
+    st.checkbox("Affiner la souplesse avec le questionnaire de mobilité", key="use_mob",
+                help="Les tests se trouvent dans Analyses complémentaires › Mobilité & douleurs. Les plages cibles s'adaptent alors à vos résultats.")
+    H(ui_kit.form_section("3 · Douleurs et objectif de score", "Vos douleurs sont rapprochées des mesures pour repérer le réglage en cause."))
+    st.multiselect("Douleurs ressenties à vélo (laisser vide s'il n'y en a pas)", list(core.COMPLAINTS.keys()), key="complaints")
+    st.slider("Score postural visé", 50, 100, step=5, key="target_score", help="Sert de repère dans le suivi de vos analyses.")
+    H(ui_kit.form_section("4 · Nom du profil", "Il apparaît dans l'historique et sur les rapports."))
+    st.text_input(f"Nom du {who}", key="profile_name", placeholder="ex. Thibaud — vélo de route")
+
+
+def profile_text():
+    """Résumé court du profil pour l'en-tête et le bandeau d'étapes."""
+    bits = [ss["discipline"], f"{int(ss['height'])} cm"]
+    if int(ss["weight"]) > 0:
+        bits.append(f"{int(ss['weight'])} kg")
+    return " · ".join(bits)
+
+
 # ------------------------------------------------------------------------------
-#  BARRE LATÉRALE
+#  CRÉATION DU PROFIL (premier accès) : ces données passent avant tout le reste
 # ------------------------------------------------------------------------------
+if not profiles and ss.get("_onboarded") != SC:
+    with st.sidebar:
+        st.markdown("### VeloFit AI")
+        auth_ui.sidebar_box(user)
+    if not ss["profile_name"]:
+        ss["profile_name"] = SC
+    H(ui_kit.appbar("VeloFit AI Studio", "Bienvenue ! Commençons par votre profil."))
+    H(ui_kit.stepper([("Votre profil", "Vélo, morphologie, douleurs", "now"),
+                      ("Photo ou vidéo", "De profil, sur home-trainer", "todo"),
+                      ("Résultats", "Score, réglages, vélo 3D", "todo")]))
+    section("Créez votre profil", "Ces informations règlent les angles visés et convertissent les mesures en millimètres : sans elles, les conseils seraient "
+                                  "génériques. Une minute suffit, et tout reste modifiable ensuite dans l'onglet « Mon profil ».", first=True)
+    with st.form("onboarding_form"):
+        profile_fields(first=True)
+        go_first = st.form_submit_button("Enregistrer et commencer", type="primary")
+        skip = st.form_submit_button("Plus tard (administration seulement)") if IS_ADMIN else False
+    if go_first:
+        ok, res = save_profile_now(require_weight=True)
+        if ok:
+            ss["_onboarded"] = SC
+            ss["_pending_sel"] = res
+            st.rerun()
+        else:
+            st.error(res)
+    elif skip:
+        ss["_onboarded"] = SC
+        st.rerun()
+    st.stop()
+
+
+# ------------------------------------------------------------------------------
+#  BARRE LATÉRALE : compte, profil actif, affichage
+# ------------------------------------------------------------------------------
+active = (ss["profile_name"] or "").strip() or "Invité"
 with st.sidebar:
     st.markdown("### VeloFit AI")
     auth_ui.sidebar_box(user)
-    st.divider()
+    st.markdown(f'<div class="side-sec">{"Client actif" if fitter else "Profil actif"}</div>', unsafe_allow_html=True)
+    _w = int(ss["weight"])
+    H(ui_kit.profile_card(active, [
+        ("Vélo", ss["discipline"], False),
+        ("Taille", f"{int(ss['height'])} cm", False),
+        ("Poids", f"{_w} kg" if _w > 0 else "à compléter", _w <= 0),
+        ("Objectif", ss["goal"], False),
+        ("Souplesse", ss["flex"], False),
+    ]))
+    st.caption(f"Pour le modifier ou en changer : onglet « {'Fiche client' if fitter else 'Mon profil'} ».")
+    st.markdown('<div class="side-sec">Affichage</div>', unsafe_allow_html=True)
     st.radio("Mode d'utilisation", ["Cycliste", "Fitter (professionnel)"], key="mode", horizontal=False,
              help="Le mode Fitter gère plusieurs clients, personnalise les rapports (logo, nom du studio) et affiche un tableau de bord.")
-    fitter = st.session_state["mode"].startswith("Fitter")
-    who = "client" if fitter else "profil"
-
-    st.markdown(f'<div class="side-sec">{"Client" if fitter else "Profil"}</div>', unsafe_allow_html=True)
-    _profiles = store.list_profiles()
-    st.selectbox(f"Ouvrir un {who} existant", [NEW_LABEL] + _profiles, key="profile_sel", on_change=_load_profile_cb)
-    st.text_input(f"Nom du {who}", key="profile_name")
-    active = (st.session_state["profile_name"] or "").strip() or "Invité"
-
-    st.markdown('<div class="side-sec">Morphologie</div>', unsafe_allow_html=True)
-    st.number_input("Taille (cm)", 140, 215, step=1, key="height")
-    st.number_input("Entrejambe (cm) — optionnel", 0, 110, step=1, key="inseam", help="0 = non renseigné. Sert aux formules de hauteur de selle et à la longueur de manivelle.")
-    st.number_input("Largeur d'épaules (cm) — optionnel", 0, 60, step=1, key="shoulder_w", help="Distance entre les deux points osseux des épaules. Sert à la largeur de cintre.")
-    st.select_slider("Souplesse (ischios / dos)", ["Limitée", "Moyenne", "Très souple"], key="flex")
-    st.checkbox("Affiner avec le questionnaire de mobilité", key="use_mob", help="Remplit les tests dans l'onglet « Mobilité & douleurs ». Les plages cibles s'adaptent à vos résultats.")
-
-    st.markdown('<div class="side-sec">Pratique</div>', unsafe_allow_html=True)
-    st.selectbox("Discipline", list(core.BASE_RANGES.keys()), key="discipline")
-    st.select_slider("Objectif", ["Confort", "Équilibré", "Performance"], key="goal")
-    st.slider("Score visé", 50, 100, step=5, key="target_score")
-
-    st.markdown('<div class="side-sec">Prise de vue</div>', unsafe_allow_html=True)
-    st.radio("Côté visible", ["Auto", "Droit", "Gauche"], horizontal=True, key="side_choice")
-    st.checkbox("Grille de cadrage sur l'image", key="show_grid")
-
-    st.markdown('<div class="side-sec">Douleurs ressenties</div>', unsafe_allow_html=True)
-    st.multiselect("Sélectionnez", list(core.COMPLAINTS.keys()), key="complaints", label_visibility="collapsed")
-
-    st.markdown('<div class="side-sec">Options</div>', unsafe_allow_html=True)
     st.checkbox("Explications pédagogiques", key="learn", help="Affiche pourquoi chaque angle compte (idéal pour débuter).")
-    if st.button(f"Enregistrer le {who}", type="primary"):
-        store.save_profile(active, {k: st.session_state[k] for k in PROFILE_KEYS})
-        st.success("Profil enregistré.")
     with st.expander("Protocole rapide"):
         st.markdown("- Profil strict, côté de la jambe mesurée\n- Vélo sur home-trainer\n- Photo : manivelle au **point mort bas** (6 h)\n- Vidéo : 10 à 15 s de pédalage régulier\n- Appareil à hauteur de hanche, ~3 m")
 
-ss = st.session_state
 ctx_flex = ss["flex"]
 extra_shift = {}
 mob = None
@@ -155,7 +298,8 @@ if ss["use_mob"]:
     ctx_flex = mob["flex_label"]
     extra_shift = mob["shifts"]
 ranges = core.get_ranges(ss["discipline"], ctx_flex, ss["goal"], extra_shift)
-ctx = dict(height=int(ss["height"]), inseam=int(ss["inseam"]), flex=ctx_flex, discipline=ss["discipline"], goal=ss["goal"])
+ctx = dict(height=int(ss["height"]), weight=int(ss["weight"]), inseam=int(ss["inseam"]), shoulder_w=int(ss["shoulder_w"]),
+           flex=ctx_flex, discipline=ss["discipline"], goal=ss["goal"])
 
 # ------------------------------------------------------------------------------
 #  COMPOSANTS D'INTERFACE
@@ -192,10 +336,10 @@ def score_ring(score):
     color = ui_kit.OK if score >= 80 else (ui_kit.WARN if score >= 60 else ui_kit.BAD)
     title, sub = core.verdict_for(score)
     H(f"""
-    <div class="score-wrap">
+    <div class="glass"><div class="score-wrap">
       <div class="ring" style="--p:{score:.0f};--c:{color}"><div class="ring-in"><div><div class="ring-val">{score:.0f}</div><div class="ring-sub">/ 100</div></div></div></div>
       <div class="verdict"><h3>{title}</h3><p>{sub}</p></div>
-    </div>""")
+    </div></div>""")
 
 
 def radar(scores, title_b="Votre position", scores_b=None):
@@ -230,10 +374,28 @@ def line_fig(x, series, height=300, target=None, ytitle=""):
 
 
 def landing():
+    """Avant toute analyse : d'abord quoi faire maintenant, ensuite ce que l'on obtient."""
+    left, right = st.columns([1.1, 0.9], gap="large")
+    with left:
+        H("""
+        <div class="glass"><h4 style="margin:0 0 6px;">Comment prendre la photo ou la vidéo</h4>
+          <div class="step"><div class="n">1</div><div><b>Vélo stabilisé</b><br><span>Montez-le sur un home-trainer, position de pédalage naturelle.</span></div></div>
+          <div class="step"><div class="n">2</div><div><b>Profil strict</b><br><span>Appareil à hauteur de hanche, à 3 m, perpendiculaire au vélo.</span></div></div>
+          <div class="step"><div class="n">3</div><div><b>Photo ou vidéo</b><br><span>Photo à 6 h (point mort bas) ou 10 à 15 s de pédalage régulier.</span></div></div>
+          <div class="step"><div class="n">4</div><div><b>Tenue ajustée</b><br><span>Vêtements près du corps et contrastés, bon éclairage, corps entier cadré.</span></div></div>
+        </div>""")
+    with right:
+        H("""
+        <div class="glass"><h4 style="margin:0 0 10px;">Ce que nous mesurons</h4>
+          <p style="color:#9aa6b8;font-size:.94rem;line-height:1.6;margin:0 0 12px;">Six angles biomécaniques sont comparés à des plages cibles adaptées à votre discipline, votre souplesse et votre objectif.</p>
+          <span class="chip" style="--c:#c6f432">Genou</span> <span class="chip" style="--c:#5ec8ff">Tronc</span> <span class="chip" style="--c:#c6f432">Hanche</span>
+          <span class="chip" style="--c:#5ec8ff">Épaule</span> <span class="chip" style="--c:#c6f432">Coude</span> <span class="chip" style="--c:#5ec8ff">Cheville</span>
+        </div>""")
+    section("Ce que vous obtiendrez", "Une fois la photo ou la vidéo importée, l'analyse s'affiche en quelques secondes.")
     feats = [
         ("video", "Photo, vidéo ou caméra", "Analyse statique au point mort bas ou dynamique sur 10 s de pédalage : cadence, régularité, amplitude du genou."),
         ("target", "Score postural /100", "Six angles pondérés, un radar et un plan d'action priorisé et chiffré en millimètres."),
-        ("ruler", "Calibration", "Échelle automatique selon votre taille ou manuelle avec une longueur connue : vos réglages en vrais mm."),
+        ("ruler", "Vélo 3D et calibration", "Les réglages à faire sont montrés sur un vélo en 3D que vous faites tourner, avec les valeurs en vrais millimètres."),
         ("compass", "Recul de selle & vue de face", "Position du genou par rapport à l'axe de pédale (KOPS), symétrie du bassin et alignement des genoux."),
         ("activity", "Mobilité & douleurs", "Questionnaire de souplesse qui adapte les cibles, et mise en relation de vos douleurs avec les mesures."),
         ("history", "Suivi & transfert", "Historique par profil, comparaison avant/après, objectif de score et transfert des réglages d'un vélo à un autre."),
@@ -243,28 +405,35 @@ def landing():
         for c, (ico, t, d) in zip(cols, row):
             with c:
                 H(f'<div class="glass feat"><div class="ico">{ui_kit.ICONS[ico]}</div><h4>{t}</h4><p>{d}</p></div>')
-    left, right = st.columns([1.1, 0.9], gap="large")
-    with left:
-        H("""
-        <div class="glass"><h4 style="margin:0 0 6px;">Protocole d'acquisition</h4>
-          <div class="step"><div class="n">1</div><div><b>Vélo stabilisé</b><br><span>Montez-le sur un home-trainer, position de pédalage naturelle.</span></div></div>
-          <div class="step"><div class="n">2</div><div><b>Profil strict</b><br><span>Appareil à hauteur de hanche, à 3 m, perpendiculaire au vélo.</span></div></div>
-          <div class="step"><div class="n">3</div><div><b>Photo ou vidéo</b><br><span>Photo à 6 h (point mort bas) ou 10 à 15 s de pédalage régulier.</span></div></div>
-          <div class="step"><div class="n">4</div><div><b>Tenue ajustée</b><br><span>Vêtements près du corps et contrastés, bon éclairage, corps entier cadré.</span></div></div>
-        </div>""")
-    with right:
-        H("""
-        <div class="glass"><h4 style="margin:0 0 10px;">Ce que nous mesurons</h4>
-          <p style="color:#8b97a8;font-size:.92rem;line-height:1.6;margin:0 0 12px;">Six angles biomécaniques sont comparés à des plages cibles adaptées à votre discipline, votre souplesse et votre objectif.</p>
-          <span class="chip" style="--c:#c6f432">Genou</span> <span class="chip" style="--c:#5ec8ff">Tronc</span> <span class="chip" style="--c:#c6f432">Hanche</span>
-          <span class="chip" style="--c:#5ec8ff">Épaule</span> <span class="chip" style="--c:#c6f432">Coude</span> <span class="chip" style="--c:#5ec8ff">Cheville</span>
-        </div>""")
 
 
 def glossary():
     for term, text in core.GLOSSARY_TERMS:
         with st.expander(term):
             st.write(text)
+
+
+def bike_view(adjustments):
+    """Vélo 3D à gauche, liste numérotée des réglages à droite (mêmes numéros)."""
+    todo = [a for a in adjustments if a["status"] in ("bad", "warn")]
+    info = [a for a in adjustments if a["status"] not in ("bad", "warn")]
+    left, right = st.columns([1.25, 0.75], gap="large")
+    with left:
+        shown = embed_html(bike3d.viewer_html(adjustments, ss["discipline"]), bike3d.HEIGHT)
+        if not shown:
+            st.info("L'aperçu 3D n'est pas disponible avec cette version de Streamlit : la liste des réglages ci-contre reste complète.")
+        else:
+            st.caption("Faites glisser pour tourner le vélo. La pièce à déplacer s'anime dans le sens du réglage ; touchez un numéro pour le détail.")
+    with right:
+        if todo:
+            H('<div class="adj-h">Réglages à faire, dans cet ordre</div>' + "".join(ui_kit.adjust_item(a) for a in todo))
+            st.caption("Corrigez un paramètre à la fois, dans cet ordre, puis refaites une analyse pour valider.")
+        else:
+            card("ok", "Aucun réglage prioritaire", "Tous les angles sont dans les plages cibles. Conservez votre configuration et refaites un contrôle après tout changement de matériel.")
+        if info:
+            H('<div class="adj-h">Repères matériel calculés depuis votre profil</div>' + "".join(ui_kit.adjust_item(a) for a in info))
+        elif int(ss["weight"]) <= 0 or int(ss["inseam"]) <= 0:
+            st.caption("Renseignez le poids, l'entrejambe et la largeur d'épaules dans « Mon profil » pour obtenir aussi la pression des pneus, la longueur de manivelle et la largeur de cintre.")
 
 
 # ------------------------------------------------------------------------------
@@ -289,7 +458,8 @@ def history_section(name, current=None, kp=""):
             st.success("Analyse enregistrée dans l'historique.")
             hist = store.load_history(name)
     if not hist:
-        st.caption("Aucune analyse enregistrée pour ce profil. Enregistrez vos analyses pour comparer l'avant / après de vos réglages.")
+        st.info("Aucune analyse enregistrée pour ce profil. Après une analyse, ouvrez la rubrique « Enregistrer & comparer » des résultats et cliquez sur « Enregistrer » : "
+                "vous pourrez ensuite comparer l'avant / après de vos réglages.")
         return
     summary = store.profile_summary(name)
     dates = [e["date"][:10] + " " + e["date"][11:16] for e in hist]
@@ -310,11 +480,13 @@ def history_section(name, current=None, kp=""):
             r[META[k]["short"]] = e["m"].get(k)
         if e.get("avg_power"):
             r["Puissance moy. (W)"] = round(e["avg_power"])
+            if int(ss["weight"]) > 0:
+                r["W/kg"] = round(e["avg_power"] / ss["weight"], 2)
         rows.append(r)
     stretch(st.dataframe, pd.DataFrame(rows), hide_index=True)
 
     if len(hist) >= 2:
-        st.markdown("##### Comparer deux analyses")
+        section("Comparer deux analyses", "Choisissez l'analyse « avant » et l'analyse « après » un réglage.")
         opts = {f"{e.get('label', '')} · {e['date'][:16].replace('T', ' ')} · {e['score']:.0f}/100": e for e in hist}
         names = list(opts.keys())
         ca, cb = st.columns(2)
@@ -339,8 +511,7 @@ def history_section(name, current=None, kp=""):
         if eb.get("note"):
             st.caption(f"Réglage noté pour l'analyse « Après » : {eb['note']}")
 
-    st.markdown("##### Données de sortie (puissance, fréquence cardiaque)")
-    st.caption("Importez l'export CSV d'une sortie pour l'associer à une analyse et suivre le lien entre position et performance.")
+    section("Données de sortie (puissance, fréquence cardiaque)", "Importez l'export CSV d'une sortie pour l'associer à une analyse et suivre le lien entre position et performance.")
     csv = st.file_uploader("Export CSV (colonnes power / watts et heart rate / bpm)", type=["csv"], key=f"{kp}ride_csv")
     if csv is not None:
         try:
@@ -352,7 +523,12 @@ def history_section(name, current=None, kp=""):
             if stats["avg_power"] is None and stats["avg_hr"] is None:
                 st.warning("Aucune colonne de puissance ou de fréquence cardiaque reconnue.")
             else:
-                st.write(f"Puissance moyenne : **{stats['avg_power']:.0f} W**" if stats["avg_power"] else "Puissance : non trouvée.")
+                if stats["avg_power"]:
+                    wkg = (f" — soit **{core.fr_num(round(stats['avg_power'] / ss['weight'], 2))} W/kg** pour {int(ss['weight'])} kg"
+                           if int(ss["weight"]) > 0 else " — renseignez votre poids dans le profil pour obtenir les watts par kilo")
+                    st.write(f"Puissance moyenne : **{stats['avg_power']:.0f} W**{wkg}")
+                else:
+                    st.write("Puissance : non trouvée.")
                 if stats["avg_hr"]:
                     st.write(f"Fréquence cardiaque moyenne : **{stats['avg_hr']:.0f} bpm**")
                 all_opts = {f"{e.get('label', '')} · {e['date'][:16].replace('T', ' ')} · {e['score']:.0f}/100": e for e in hist}
@@ -382,69 +558,115 @@ def history_section(name, current=None, kp=""):
 
 
 # ------------------------------------------------------------------------------
-#  EN-TÊTE ET SOURCE DE L'IMAGE
+#  EN-TÊTE ET NAVIGATION
 # ------------------------------------------------------------------------------
 brand = (ss["studio"] or "VeloFit AI Studio") if fitter else "VeloFit AI Studio"
-H(ui_kit.hero(brand, "Votre laboratoire virtuel de bike-fitting : photo ou vidéo de pédalage, six angles mesurés, un score postural, "
-              "un plan d'action chiffré, un simulateur de réglages et un suivi dans le temps."))
+H(ui_kit.appbar(brand, "Analyse posturale à vélo : une photo ou une vidéo de profil, des réglages chiffrés.",
+                who=f"{'Client' if fitter else 'Profil'} : <b>{_html.escape(active)}</b><br>{_html.escape(profile_text())}"))
 
-source = st.radio("Source", ["Photo", "Vidéo de pédalage", "Caméra"], horizontal=True, label_visibility="collapsed")
-photo_bytes = video_bytes = None
-if source == "Photo":
-    up = st.file_uploader("Vue de profil (JPG ou PNG)", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-    photo_bytes = up.getvalue() if up is not None else None
-elif source == "Vidéo de pédalage":
-    up = st.file_uploader("Vidéo de profil (MP4, MOV, AVI) — 10 à 15 s de pédalage régulier", type=["mp4", "mov", "avi", "m4v"], label_visibility="collapsed")
-    video_bytes = up.getvalue() if up is not None else None
-else:
-    up = st.camera_input("Photo de profil", label_visibility="collapsed")
-    photo_bytes = up.getvalue() if up is not None else None
-
-_top_names = ["Analyse", "Suivi & historique", "Clients" if fitter else "Guide"] + (["Administration"] if IS_ADMIN else [])
+PROFILE_TAB = "Fiche client" if fitter else "Mon profil"
+_top_names = ["Analyse", PROFILE_TAB, "Suivi", "Guide"] + (["Clients"] if fitter else []) + (["Administration"] if IS_ADMIN else [])
 tabs_top = st.tabs(_top_names)
-t_main, t_hist_top, t_third = tabs_top[:3]
-t_admin = tabs_top[3] if IS_ADMIN else None
+t_main, t_prof, t_hist_top, t_guide = tabs_top[:4]
+t_clients = tabs_top[4] if fitter else None
+t_admin = tabs_top[-1] if IS_ADMIN else None
 
+# --- profil : toujours modifiable
+with t_prof:
+    section(PROFILE_TAB, "Ces données règlent les angles visés et les calculs en millimètres. Modifiez-les puis enregistrez : l'analyse en cours est recalculée aussitôt.", first=True)
+    if ss.get("_flash"):
+        st.success(ss.pop("_flash"))
+    p1, p2 = st.columns([1.2, 1])
+    p1.selectbox(f"Ouvrir un {who} existant ou en créer un nouveau", [NEW_LABEL] + profiles, key="profile_sel", on_change=_load_profile_cb)
+    if int(ss["weight"]) <= 0:
+        st.warning("Le poids n'est pas renseigné : la pression des pneus et les watts par kilo ne peuvent pas être calculés.")
+    with st.form("profile_form"):
+        profile_fields()
+        go_save = st.form_submit_button(f"Enregistrer le {who}", type="primary")
+    if go_save:
+        ok, res = save_profile_now()
+        if ok:
+            ss["_flash"] = f"Profil « {res} » enregistré."
+            ss["_pending_sel"] = res
+            st.rerun()
+        else:
+            st.error(res)
+
+# --- suivi
 with t_hist_top:
+    section(f"Suivi de {active}", "Toutes vos analyses enregistrées, l'évolution du score et la comparaison avant / après.", first=True)
     history_section(active, kp="top_")
 
-with t_third:
-    if fitter:
-        profs = store.list_profiles()
-        if not profs:
-            st.info("Aucun client enregistré. Saisissez un nom dans la barre latérale puis enregistrez le profil.")
+# --- guide
+with t_guide:
+    section("Comment prendre une bonne photo ou vidéo", "La qualité de la prise de vue fait la fiabilité des mesures.", first=True)
+    st.markdown("- Vélo sur home-trainer, position de pédalage naturelle\n- Appareil à hauteur de hanche, à environ 3 m, perpendiculaire au vélo (profil strict)\n"
+                "- Photo : manivelle au **point mort bas** (6 h), côté de la jambe mesurée vers l'appareil\n- Vidéo : 10 à 15 s de pédalage régulier\n"
+                "- Vêtements ajustés et contrastés, bon éclairage, corps entier dans le cadre")
+    section(f"Conseils pour la discipline « {ss['discipline']} »")
+    for tip in core.DISCIPLINE_TIPS[ss["discipline"]]:
+        st.markdown(f"- {tip}")
+    section("Glossaire", "Les mots du bike-fitting utilisés dans l'application.")
+    glossary()
+
+# --- clients (mode fitter)
+if fitter:
+    with t_clients:
+        section("Vos clients", "Tableau de bord de tous les profils enregistrés sur ce compte.", first=True)
+        if not profiles:
+            st.info("Aucun client enregistré. Créez-en un dans l'onglet « Fiche client ».")
         else:
             rows = []
-            for p in profs:
+            for p in profiles:
                 s = store.profile_summary(p)
                 rows.append({"Client": p, "Analyses": s["n"], "Dernier score": s["last_score"], "Dernière visite": s["last_date"], "Discipline": s["discipline"], "Objectif": s["target"]})
             stretch(st.dataframe, pd.DataFrame(rows), hide_index=True)
-            note("Ouvrez un client avec la liste « Ouvrir un client existant » dans la barre latérale.")
-        st.markdown("##### Image de marque des rapports")
+            note("Ouvrez un client avec la liste « Ouvrir un client existant » de l'onglet « Fiche client ».")
+        section("Image de marque des rapports", "Le nom et le logo de votre studio apparaissent sur les rapports PDF et HTML.")
         ss["studio"] = st.text_input("Nom du studio", value=ss["studio"], placeholder="ex. Cycles Dupont — Studio de fitting", key="studio_in")
         logo = st.file_uploader("Logo (PNG ou JPG)", type=["png", "jpg", "jpeg"], key="logo_up")
         if logo is not None:
             ss["logo_png"] = logo.getvalue()
         if ss["logo_png"]:
             st.image(ss["logo_png"], width=140)
-    else:
-        st.markdown("##### Glossaire")
-        glossary()
-        st.markdown(f"##### Conseils pour la discipline « {ss['discipline']} »")
-        for tip in core.DISCIPLINE_TIPS[ss["discipline"]]:
-            st.markdown(f"- {tip}")
 
 if IS_ADMIN:
     with t_admin:
         auth_ui.admin_panel(user)
 
 # ------------------------------------------------------------------------------
-#  ANALYSE
+#  ANALYSE : étape 2 (prise de vue) puis étape 3 (résultats)
 # ------------------------------------------------------------------------------
 with t_main:
+    step_box = st.empty()
+
+    def show_steps(has_file, score=None):
+        step_box.markdown(ui_kit.stepper([
+            ("Votre profil", profile_text(), "done"),
+            ("Photo ou vidéo", "Importée" if has_file else "À importer ci-dessous", "done" if has_file else "now"),
+            ("Résultats", f"Score {score:.0f}/100" if score is not None else "Score, réglages, vélo 3D", "now" if score is not None else "todo"),
+        ]), unsafe_allow_html=True)
+
+    section("Étape 2 · Votre photo ou vidéo de profil", "Choisissez la source, puis importez le fichier. L'analyse démarre toute seule.", first=True)
+    source = st.radio("Source", ["Photo", "Vidéo de pédalage", "Caméra"], horizontal=True, label_visibility="collapsed")
+    photo_bytes = video_bytes = None
+    if source == "Photo":
+        up = st.file_uploader("Vue de profil (JPG ou PNG)", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+        photo_bytes = up.getvalue() if up is not None else None
+    elif source == "Vidéo de pédalage":
+        up = st.file_uploader("Vidéo de profil (MP4, MOV, AVI) — 10 à 15 s de pédalage régulier", type=["mp4", "mov", "avi", "m4v"], label_visibility="collapsed")
+        video_bytes = up.getvalue() if up is not None else None
+    else:
+        up = st.camera_input("Photo de profil", label_visibility="collapsed")
+        photo_bytes = up.getvalue() if up is not None else None
+    with st.expander("Options de prise de vue (côté visible, grille de cadrage)"):
+        st.radio("Côté du cycliste visible sur l'image", ["Auto", "Droit", "Gauche"], horizontal=True, key="side_choice",
+                 help="Laissez « Auto » : le côté le mieux visible est choisi automatiquement.")
+        st.checkbox("Afficher une grille de cadrage sur l'image analysée", key="show_grid")
+
     if photo_bytes is None and video_bytes is None:
-        st.session_state["_analysis"] = None
-        st.write("")
+        ss["_analysis"] = None
+        show_steps(False)
         landing()
         st.stop()
 
@@ -452,6 +674,7 @@ with t_main:
     _raw = video_bytes if video_bytes is not None else photo_bytes
     _ok, _why, _charged = acc.use_analysis(SC, hashlib.md5(_raw).hexdigest(), "vidéo" if video_bytes is not None else "photo")
     if not _ok:
+        show_steps(True)
         if _why == "quota":
             auth_ui.paywall(acc.get_user(SC))
         else:
@@ -481,7 +704,8 @@ with t_main:
                 ss["_video_key"], ss["_video_res"] = key, res
             res = ss["_video_res"]
             if "error" in res:
-                st.error("" + res["error"])
+                show_steps(True)
+                st.error(res["error"])
                 st.stop()
             lms = [tuple(x) for x in res["lms_best"]]
             A.update(img=res["image"], lms=lms, side=res["side"], m=res["m"], source="vidéo", video=res)
@@ -489,12 +713,14 @@ with t_main:
             with st.spinner("Détection du squelette et calcul des angles…"):
                 det = core.detect_image(photo_bytes)
             if det is None:
+                show_steps(True)
                 st.error("Impossible de détecter un corps sur cette image. Importez une vue latérale nette, bien éclairée et entièrement cadrée.")
                 st.stop()
             lms = det["landmarks"]
             side = core.auto_side(lms) if ss["side_choice"] == "Auto" else ss["side_choice"]
             A.update(img=det["image"], lms=lms, side=side, source="photo" if source == "Photo" else "caméra", video=None)
     except RuntimeError as exc:
+        show_steps(True)
         st.error(f"{exc}")
         st.stop()
 
@@ -532,288 +758,317 @@ with t_main:
     recs = core.build_recommendations(m, ev, ranges, ctx)
     annotated = core.annotate(img, pts, m, ev, grid=ss["show_grid"])
     extras = []
-    st.session_state["_analysis"] = True
+    kops_for_bike = None
+    ss["_analysis"] = True
+    show_steps(True, gscore)
 
-    # --- tableau de bord principal
-    col_img, col_side = st.columns([1.15, 0.85], gap="large")
-    with col_img:
-        st.markdown("#### Analyse cinématique")
-        stretch(st.image, annotated, caption=f"Côté analysé : {A['side']} · {ss['discipline']} · source : {A['source']}")
-        qcol = ui_kit.OK if quality >= 75 else (ui_kit.WARN if quality >= 55 else ui_kit.BAD)
-        H(f'<span class="chip" style="--c:{qcol}">Qualité de la prise de vue : {quality:.0f}/100</span>')
-        with st.expander("Calibration (optionnelle)"):
-            st.caption(cal_info)
-            st.radio("Mode", ["Automatique (taille)", "Manuelle (longueur connue)"], key="cal_mode", horizontal=True)
-            if ss.get("cal_mode", "").startswith("Manuelle"):
-                st.caption("Placez deux points sur un objet de longueur connue (ex. empattement, mètre ruban, hauteur de selle) dans le même plan que le cycliste, puis indiquez sa longueur.")
-                s1, s2 = st.columns(2)
-                s1.slider("Point 1 — x (%)", 0, 100, 10, key="cal_x1")
-                s1.slider("Point 1 — y (%)", 0, 100, 50, key="cal_y1")
-                s2.slider("Point 2 — x (%)", 0, 100, 90, key="cal_x2")
-                s2.slider("Point 2 — y (%)", 0, 100, 50, key="cal_y2")
-                st.number_input("Longueur réelle entre les deux points (cm)", 5.0, 400.0, 100.0, 0.5, key="cal_len")
-                stretch(st.image, core.draw_calibration(img, (ss["cal_x1"] / 100 * iw, ss["cal_y1"] / 100 * ih), (ss["cal_x2"] / 100 * iw, ss["cal_y2"] / 100 * ih), f"{ss['cal_len']:g} cm"))
-            segs = core.segments_mm(pts, scale)
-            st.write("Segments estimés (mm) : " + " · ".join(f"{k} {v:.0f}" for k, v in segs.items()))
-    with col_side:
-        st.markdown("#### Score postural")
-        H('<div class="glass">')
-        score_ring(gscore)
-        H("</div>")
-        st.write("")
-        c1, c2 = st.columns(2)
+    n_bad = sum(1 for r in recs if r["status"] == "bad")
+    n_warn = sum(1 for r in recs if r["status"] == "warn")
+    section("Étape 3 · Vos résultats", "Commencez par le résumé ; les autres rubriques détaillent chaque réglage, sans obligation de tout lire.")
+    r_sum, r_bike, r_more, r_tools, r_follow, r_rep = st.tabs(
+        ["Résumé", "Réglages du vélo", "Analyses complémentaires", "Simulateur & transfert", "Enregistrer & comparer", "Rapport"])
+
+    # ==================================================================== RÉSUMÉ
+    with r_sum:
+        col_a, col_b = st.columns([0.95, 1.05], gap="large")
+        with col_a:
+            score_ring(gscore)
+            qcol = ui_kit.OK if quality >= 75 else (ui_kit.WARN if quality >= 55 else ui_kit.BAD)
+            chips = []
+            if n_bad:
+                chips.append(f'<span class="chip" style="--c:{ui_kit.BAD}">{n_bad} à corriger</span>')
+            if n_warn:
+                chips.append(f'<span class="chip" style="--c:{ui_kit.WARN}">{n_warn} à surveiller</span>')
+            if not n_bad and not n_warn:
+                chips.append(f'<span class="chip" style="--c:{ui_kit.OK}">Tous les angles dans la cible</span>')
+            chips.append(f'<span class="chip" style="--c:{qcol}">Qualité de la prise de vue : {quality:.0f}/100</span>')
+            H('<div class="sum-chips">' + "".join(chips) + "</div>")
+            st.caption(f"Score sur 100 : moyenne pondérée de six angles, comparés aux plages visées pour « {ss['discipline']} », objectif {ss['goal'].lower()}, "
+                       f"souplesse {ctx_flex.lower()}.")
+        with col_b:
+            stretch(st.image, annotated, caption=f"Côté analysé : {A['side']} · {ss['discipline']} · source : {A['source']}")
+
+        next_box = st.container()      # « par où commencer » : rempli plus bas, avec le premier réglage de la liste
+        section("Les réglages à faire sur votre vélo", "Chaque numéro du vélo correspond à une ligne de la liste. Le détail de chaque réglage se trouve dans la rubrique « Réglages du vélo ».")
+        bike_box = st.container()      # rempli plus bas, une fois le recul de selle (photo à 3 h) connu
+
+        section("Vos 6 angles mesurés", "La zone verte de chaque jauge est la plage visée pour votre profil ; le trait indique votre mesure.")
+        c1, c2, c3 = st.columns(3)
         for i, k in enumerate(ORDER):
-            with (c1 if i % 2 == 0 else c2):
+            with (c1, c2, c3)[i % 3]:
                 metric_card(k, m[k], ev[k], ranges[k])
 
-    st.write("")
-    names_tabs = ["Synthèse", "Selle & recul", "Tronc & cockpit", "Cales & matériel", "Vue de face", "Pédalage",
-                  "Mobilité & douleurs", "Simulateur", "Transfert", "Suivi", "Rapport"]
-    (t_syn, t_sel, t_tro, t_mat, t_front, t_ped, t_mob, t_sim, t_tr, t_follow, t_rep) = st.tabs(names_tabs)
-
-    # --- synthèse
-    with t_syn:
+        section("Pour aller plus loin", "Vue d'ensemble des six angles, fiabilité de la mesure et calibration.")
         a, b = st.columns([0.9, 1.1], gap="large")
         with a:
             st.markdown("##### Profil postural")
             stretch(st.plotly_chart, radar(scores))
+        with b:
             st.markdown("##### Fiabilité de la mesure")
             for lvl, txt in qnotes:
                 H(f'<div class="insight" style="--c:{STATUS[lvl][0]}"><p style="margin:0">{txt}</p></div>')
-        with b:
-            st.markdown("##### Plan d'action priorisé")
-            todo = sorted([r for r in recs if r["status"] != "ok"], key=lambda r: (0 if r["status"] == "bad" else 1, -META[r["key"]]["w"]))
-            if not todo:
-                card("ok", "Aucun réglage prioritaire", "Tous les angles sont dans les plages cibles. Conservez votre configuration et refaites un contrôle après tout changement de matériel.")
-            for i, r in enumerate(todo, 1):
-                c = STATUS[r["status"]][0]
-                H(f'<div class="prio" style="--c:{c}"><div class="num">{i}</div><div class="t"><b>{r["title"]}</b><br>'
-                  f'<span style="color:#8b97a8">{META[r["key"]]["label"]} · {m[r["key"]]:.1f}°</span></div><span class="chip" style="--c:{c}">{STATUS[r["status"]][1]}</span></div>')
-            if todo:
-                st.caption("Corrigez un paramètre à la fois, dans cet ordre, puis refaites une analyse pour valider.")
             if ss["learn"]:
                 with st.expander("Comment lire ces résultats ?"):
                     st.write("Chaque angle est comparé à une plage cible. En vert : dans la cible. En orange : écart modéré. En rouge : écart important. Le score est une moyenne pondérée : le genou compte le plus (30 %), car c'est le réglage le plus déterminant.")
                     st.write(f"Votre plage cible dépend de la discipline ({ss['discipline']}), de votre objectif ({ss['goal']}) et de votre souplesse ({ctx_flex}).")
-            note("Les plages cibles sont indicatives et issues des pratiques courantes de bike-fitting. Elles ne remplacent ni un fitting en studio avec capture dynamique, ni l'avis d'un professionnel de santé en cas de douleur persistante.")
+            with st.expander("Calibration (optionnelle)"):
+                st.caption(cal_info)
+                st.radio("Mode", ["Automatique (taille)", "Manuelle (longueur connue)"], key="cal_mode", horizontal=True)
+                if ss.get("cal_mode", "").startswith("Manuelle"):
+                    st.caption("Placez deux points sur un objet de longueur connue (ex. empattement, mètre ruban, hauteur de selle) dans le même plan que le cycliste, puis indiquez sa longueur.")
+                    s1, s2 = st.columns(2)
+                    s1.slider("Point 1 — x (%)", 0, 100, 10, key="cal_x1")
+                    s1.slider("Point 1 — y (%)", 0, 100, 50, key="cal_y1")
+                    s2.slider("Point 2 — x (%)", 0, 100, 90, key="cal_x2")
+                    s2.slider("Point 2 — y (%)", 0, 100, 50, key="cal_y2")
+                    st.number_input("Longueur réelle entre les deux points (cm)", 5.0, 400.0, 100.0, 0.5, key="cal_len")
+                    stretch(st.image, core.draw_calibration(img, (ss["cal_x1"] / 100 * iw, ss["cal_y1"] / 100 * ih), (ss["cal_x2"] / 100 * iw, ss["cal_y2"] / 100 * ih), f"{ss['cal_len']:g} cm"))
+                segs = core.segments_mm(pts, scale)
+                st.write("Segments estimés (mm) : " + " · ".join(f"{k} {v:.0f}" for k, v in segs.items()))
+        note("Les plages cibles sont indicatives et issues des pratiques courantes de bike-fitting. Elles ne remplacent ni un fitting en studio avec capture dynamique, ni l'avis d'un professionnel de santé en cas de douleur persistante.")
 
-    # --- selle & recul
-    with t_sel:
-        for r in recs:
-            if r["key"] in ("knee", "ankle"):
-                insight(r)
-        st.markdown("##### Recul de selle (KOPS)")
-        st.caption("Pour mesurer le recul, photographiez le cycliste avec la manivelle à l'horizontale (3 h, pédale avant) et importez la photo ici. À défaut, l'image principale est utilisée si la jambe est dans la bonne position.")
-        kfile = st.file_uploader("Photo manivelle à 3 h (profil)", type=["jpg", "jpeg", "png"], key="kops_file")
-        k_img, k_lms, k_scale, k_side = img, A["lms"], scale, A["side"]
-        if kfile is not None:
-            kdet = core.detect_image(kfile.getvalue())
-            if kdet is None:
-                st.error("Aucun corps détecté sur la photo à 3 h.")
-                k_img = None
-            else:
-                k_img, k_lms = kdet["image"], kdet["landmarks"]
-                k_side = core.auto_side(k_lms) if ss["side_choice"] == "Auto" else ss["side_choice"]
-                kp, _ = core.side_points(k_lms, k_side, k_img.shape[1], k_img.shape[0])
-                k_scale = core.auto_scale(kp, ctx["height"])
-        if k_img is not None:
-            kres = core.kops_analysis(k_lms, k_side, k_img.shape[1], k_img.shape[0], k_scale)
-            if not kres["crank_ok"]:
-                st.warning(f"Le genou est à {kres['knee_angle']:.0f}° : la manivelle ne semble pas à l'horizontale (3 h). Le résultat ci-dessous est donc peu fiable.")
-            stretch(st.image, core.annotate_kops(k_img, kres), caption="Ligne jaune : axe de pédale estimé · ligne colorée : genou")
-            lvl, title, diag, acts = core.kops_recommendation(kres)
-            card(lvl, title, diag, acts, why="Le recul de selle répartit le poids entre selle et cintre et modifie le travail des quadriceps et des fessiers.")
-            if kres["crank_ok"]:
-                extras.append(("Recul de selle (KOPS)", f"{title} — {diag}"))
-            st.caption("L'axe de pédale est estimé à partir de la position du pied (≈ 72 % entre talon et orteil) : mesure indicative.")
-        st.markdown("##### Hauteur de selle de référence")
-        if ctx["inseam"] > 0:
-            e = ctx["inseam"]
-            x1, x2, x3 = st.columns(3)
-            x1.metric("LeMond (0,883 × entrejambe)", f"{e * 0.883:.1f} cm", help="Axe du boîtier de pédalier → dessus de selle")
-            x2.metric("Hamley (1,09 × entrejambe)", f"{e * 1.09:.1f} cm", help="Axe de pédale au point bas → dessus de selle")
-            x3.metric("Taille de cadre route (≈ 0,665 × entrejambe)", f"{e * 0.665:.1f} cm", help="Tube de selle, très indicatif.")
-            st.caption("Ces formules donnent un point de départ ; la mesure par l'angle du genou est plus fiable pour affiner.")
-        else:
-            st.info("Renseignez votre entrejambe dans la barre latérale pour afficher les hauteurs de selle de référence (LeMond, Hamley).")
-        d_now = core.hip_ankle_dist(m["knee"], seg)
-        y1, y2 = st.columns(2)
-        y1.metric("Distance hanche → cheville", f"{d_now / 10:.1f} cm", help="Estimée avec votre calibration ou un modèle anthropométrique.")
-        y2.metric("Inclinaison de la jambe", f"{leg_tilt:.0f}°", help="Écart de l'axe hanche-cheville par rapport à la verticale (≈ 6 h si < 30°).")
+    # ==================================================================== RÉGLAGES DU VÉLO
+    with r_bike:
+        st.caption("Le détail de chaque réglage : ce qui a été mesuré, pourquoi cela compte et comment corriger.")
+        t_sel, t_tro, t_mat = st.tabs(["Selle & recul", "Tronc & cockpit", "Cales, pneus & matériel"])
 
-    # --- tronc & cockpit
-    with t_tro:
-        for r in recs:
-            if r["key"] in ("torso", "hip", "shoulder", "elbow"):
-                insight(r)
-        note("Le cockpit se règle avec la potence (longueur, angle) et la hauteur du cintre. Relever le cintre de 10 mm modifie le tronc d'environ 1 à 2°. Ajustez par pas de 10 mm et testez le simulateur avant de modifier votre vélo.")
-
-    # --- cales & matériel
-    with t_mat:
-        st.markdown("##### Longueur de manivelle et largeur de cintre")
-        z1, z2 = st.columns(2)
-        with z1:
+        # --- selle & recul
+        with t_sel:
+            for r in recs:
+                if r["key"] in ("knee", "ankle"):
+                    insight(r)
+            section("Recul de selle (KOPS)", "Pour mesurer le recul, photographiez le cycliste avec la manivelle à l'horizontale (3 h, pédale avant) et importez la photo ici. "
+                                             "À défaut, l'image principale est utilisée si la jambe est dans la bonne position.")
+            kfile = st.file_uploader("Photo manivelle à 3 h (profil)", type=["jpg", "jpeg", "png"], key="kops_file")
+            k_img, k_lms, k_scale, k_side = img, A["lms"], scale, A["side"]
+            if kfile is not None:
+                kdet = core.detect_image(kfile.getvalue())
+                if kdet is None:
+                    st.error("Aucun corps détecté sur la photo à 3 h.")
+                    k_img = None
+                else:
+                    k_img, k_lms = kdet["image"], kdet["landmarks"]
+                    k_side = core.auto_side(k_lms) if ss["side_choice"] == "Auto" else ss["side_choice"]
+                    kp, _ = core.side_points(k_lms, k_side, k_img.shape[1], k_img.shape[0])
+                    k_scale = core.auto_scale(kp, ctx["height"])
+            if k_img is not None:
+                kres = core.kops_analysis(k_lms, k_side, k_img.shape[1], k_img.shape[0], k_scale)
+                if not kres["crank_ok"]:
+                    st.warning(f"Le genou est à {kres['knee_angle']:.0f}° : la manivelle ne semble pas à l'horizontale (3 h). Le résultat ci-dessous est donc peu fiable.")
+                stretch(st.image, core.annotate_kops(k_img, kres), caption="Ligne jaune : axe de pédale estimé · ligne colorée : genou")
+                lvl, title, diag, acts = core.kops_recommendation(kres)
+                card(lvl, title, diag, acts, why="Le recul de selle répartit le poids entre selle et cintre et modifie le travail des quadriceps et des fessiers.")
+                if kres["crank_ok"]:
+                    extras.append(("Recul de selle (KOPS)", f"{title} — {diag}"))
+                    kops_for_bike = kres
+                st.caption("L'axe de pédale est estimé à partir de la position du pied (≈ 72 % entre talon et orteil) : mesure indicative.")
+            section("Hauteur de selle de référence", "Des formules classiques donnent un point de départ ; la mesure par l'angle du genou est plus fiable pour affiner.")
             if ctx["inseam"] > 0:
-                best, raw = core.crank_length_suggestion(ctx["inseam"])
-                st.metric("Manivelle conseillée", f"{best:g} mm", help=f"Environ 21,6 % de l'entrejambe ({raw:.0f} mm), arrondie au format standard.")
-                st.caption("Un écart de 2,5 mm n'a pas d'effet mesurable ; au-delà de 5 mm, adaptez aussi la hauteur de selle.")
+                e = ctx["inseam"]
+                x1, x2, x3 = st.columns(3)
+                x1.metric("LeMond (0,883 × entrejambe)", f"{e * 0.883:.1f} cm", help="Axe du boîtier de pédalier → dessus de selle")
+                x2.metric("Hamley (1,09 × entrejambe)", f"{e * 1.09:.1f} cm", help="Axe de pédale au point bas → dessus de selle")
+                x3.metric("Taille de cadre route (≈ 0,665 × entrejambe)", f"{e * 0.665:.1f} cm", help="Tube de selle, très indicatif.")
             else:
-                st.info("Renseignez l'entrejambe pour une suggestion de manivelle.")
-        with z2:
-            if ss["shoulder_w"] > 0:
-                st.metric("Largeur de cintre conseillée", f"{core.bar_width_suggestion(ss['shoulder_w'])} cm", help="Proche de la largeur de vos épaules, mesurée entre les points osseux.")
-                st.caption("Un cintre plus large ouvre la cage thoracique ; plus étroit, il est plus aérodynamique mais moins stable.")
+                st.info("Renseignez votre entrejambe dans l'onglet « Mon profil » pour afficher les hauteurs de selle de référence (LeMond, Hamley).")
+            d_now = core.hip_ankle_dist(m["knee"], seg)
+            y1, y2 = st.columns(2)
+            y1.metric("Distance hanche → cheville", f"{d_now / 10:.1f} cm", help="Estimée avec votre calibration ou un modèle anthropométrique.")
+            y2.metric("Inclinaison de la jambe", f"{leg_tilt:.0f}°", help="Écart de l'axe hanche-cheville par rapport à la verticale (≈ 6 h si < 30°).")
+
+        # --- tronc & cockpit
+        with t_tro:
+            for r in recs:
+                if r["key"] in ("torso", "hip", "shoulder", "elbow"):
+                    insight(r)
+            note("Le cockpit se règle avec la potence (longueur, angle) et la hauteur du cintre. Relever le cintre de 10 mm modifie le tronc d'environ 1 à 2°. Ajustez par pas de 10 mm et testez le simulateur avant de modifier votre vélo.")
+
+        # --- cales, pneus & matériel
+        with t_mat:
+            section("Longueur de manivelle et largeur de cintre", "Repères calculés depuis votre entrejambe et votre largeur d'épaules.", first=True)
+            z1, z2 = st.columns(2)
+            with z1:
+                if ctx["inseam"] > 0:
+                    best, raw = core.crank_length_suggestion(ctx["inseam"])
+                    st.metric("Manivelle conseillée", f"{core.fr_num(best)} mm", help=f"Environ 21,6 % de l'entrejambe ({raw:.0f} mm), arrondie au format standard.")
+                    st.caption("Un écart de 2,5 mm n'a pas d'effet mesurable ; au-delà de 5 mm, adaptez aussi la hauteur de selle.")
+                else:
+                    st.info("Renseignez l'entrejambe dans « Mon profil » pour une suggestion de manivelle.")
+            with z2:
+                if ss["shoulder_w"] > 0:
+                    st.metric("Largeur de cintre conseillée", f"{core.bar_width_suggestion(ss['shoulder_w'])} cm", help="Proche de la largeur de vos épaules, mesurée entre les points osseux.")
+                    st.caption("Un cintre plus large ouvre la cage thoracique ; plus étroit, il est plus aérodynamique mais moins stable.")
+                else:
+                    st.info("Renseignez la largeur d'épaules dans « Mon profil » pour une suggestion de cintre.")
+            section("Pression des pneus", "Point de départ calculé depuis votre poids et le type de vélo.")
+            tp = core.tyre_pressure(ss["discipline"], ctx["weight"])
+            if tp:
+                t1, t2, t3 = st.columns(3)
+                t1.metric("Pneu avant", f"{core.fr_num(tp['front'])} bar")
+                t2.metric("Pneu arrière", f"{core.fr_num(tp['rear'])} bar")
+                t3.metric("Poids cycliste + vélo", f"{tp['system']:.0f} kg", help=f"{ctx['weight']} kg + un vélo type d'environ {core.fr_num(tp['bike'])} kg.")
+                note(f"Valeurs indicatives pour des pneus de {tp['tyre']} avec chambre à air. En tubeless, retirez 0,3 à 0,5 bar ; sur route mouillée ou terrain meuble, baissez encore un peu. "
+                     "Ne dépassez jamais la pression maximale inscrite sur le pneu et sur la jante.")
             else:
-                st.info("Renseignez la largeur d'épaules pour une suggestion de cintre.")
-        st.markdown("##### Cales et pied")
-        ank = next(r for r in recs if r["key"] == "ankle")
-        insight(ank)
-        card("warn" if ev["ankle"]["dir"] != "in" else "ok", "Réglage des cales — points de contrôle",
-             "La photo ne permet pas de mesurer directement les cales. Voici la procédure de contrôle :",
-             ["<b>Avant-arrière</b> : l'articulation du gros orteil à l'aplomb de l'axe de pédale. Plus en avant, la charge sur le mollet augmente ; plus en arrière, elle diminue.",
-              "<b>Rotation</b> : laissez le pied pivoter naturellement ; une rotation forcée sollicite le genou.",
-              "<b>Écartement</b> : réglez pour que les genoux restent alignés avec les hanches (voir l'onglet Vue de face).",
-              "Ajustez une seule cale à la fois, par petits pas de 1 à 2 mm.", "Consultez un fitter si vous avez des douleurs de genou ou de pied persistantes."])
-        st.markdown("##### Conseils pour votre discipline")
-        for tip in core.DISCIPLINE_TIPS[ss["discipline"]]:
-            st.markdown(f"- {tip}")
-        note("Les cales, la selle (largeur, inclinaison) et le cintre (forme, reach) influencent beaucoup le confort. Les mesurer précisément demande un outil dédié : cette app donne des repères, pas un diagnostic.")
+                st.info("Renseignez votre poids dans « Mon profil » pour obtenir une pression de départ.")
+            section("Cales et pied")
+            ank = next(r for r in recs if r["key"] == "ankle")
+            insight(ank)
+            card("warn" if ev["ankle"]["dir"] != "in" else "ok", "Réglage des cales — points de contrôle",
+                 "La photo ne permet pas de mesurer directement les cales. Voici la procédure de contrôle :",
+                 ["<b>Avant-arrière</b> : l'articulation du gros orteil à l'aplomb de l'axe de pédale. Plus en avant, la charge sur le mollet augmente ; plus en arrière, elle diminue.",
+                  "<b>Rotation</b> : laissez le pied pivoter naturellement ; une rotation forcée sollicite le genou.",
+                  "<b>Écartement</b> : réglez pour que les genoux restent alignés avec les hanches (voir Analyses complémentaires › Vue de face).",
+                  "Ajustez une seule cale à la fois, par petits pas de 1 à 2 mm.", "Consultez un fitter si vous avez des douleurs de genou ou de pied persistantes."])
+            section("Conseils pour votre discipline")
+            for tip in core.DISCIPLINE_TIPS[ss["discipline"]]:
+                st.markdown(f"- {tip}")
+            note("Les cales, la selle (largeur, inclinaison) et le cintre (forme, reach) influencent beaucoup le confort. Les mesurer précisément demande un outil dédié : cette app donne des repères, pas un diagnostic.")
 
-    # --- vue de face
-    with t_front:
-        st.caption("Importez une photo prise de face ou de dos, le cycliste sur son vélo en position de pédalage, pour évaluer la symétrie et l'alignement des genoux.")
-        ff = st.file_uploader("Photo de face ou de dos", type=["jpg", "jpeg", "png"], key="front_file")
-        if ff is not None:
-            fdet = core.detect_image(ff.getvalue())
-            if fdet is None:
-                st.error("Aucun corps détecté sur cette photo.")
+    # ==================================================================== ANALYSES COMPLÉMENTAIRES
+    with r_more:
+        st.caption("Trois analyses facultatives pour compléter le profil : symétrie vue de face, pédalage en vidéo, mobilité et douleurs.")
+        t_front, t_ped, t_mob = st.tabs(["Vue de face", "Pédalage (vidéo)", "Mobilité & douleurs"])
+
+        # --- vue de face
+        with t_front:
+            st.caption("Importez une photo prise de face ou de dos, le cycliste sur son vélo en position de pédalage, pour évaluer la symétrie et l'alignement des genoux.")
+            ff = st.file_uploader("Photo de face ou de dos", type=["jpg", "jpeg", "png"], key="front_file")
+            if ff is not None:
+                fdet = core.detect_image(ff.getvalue())
+                if fdet is None:
+                    st.error("Aucun corps détecté sur cette photo.")
+                else:
+                    fres = core.analyze_frontal(fdet["image"], fdet["landmarks"])
+                    fa, fb = st.columns([1, 1], gap="large")
+                    with fa:
+                        stretch(st.image, fres["image"], caption="Bassin, épaules et alignement des jambes")
+                    with fb:
+                        for it in fres["items"]:
+                            card(it["status"], it["label"], f"<b>{it['value']:.1f}{it['unit']}</b> — {it['text']}")
+                    bad = [it for it in fres["items"] if it["status"] != "ok"]
+                    if bad:
+                        extras.append(("Vue de face", " ; ".join(f"{it['label']} : {it['value']:.1f}{it['unit']}" for it in bad)))
+                    note("En vue de face, les angles dépendent beaucoup de l'objectif et du cadrage : une asymétrie légère (< 2–3°) est normale.")
             else:
-                fres = core.analyze_frontal(fdet["image"], fdet["landmarks"])
-                fa, fb = st.columns([1, 1], gap="large")
-                with fa:
-                    stretch(st.image, fres["image"], caption="Bassin, épaules et alignement des jambes")
-                with fb:
-                    for it in fres["items"]:
-                        card(it["status"], it["label"], f"<b>{it['value']:.1f}{it['unit']}</b> — {it['text']}")
-                bad = [it for it in fres["items"] if it["status"] != "ok"]
-                if bad:
-                    extras.append(("Vue de face", " ; ".join(f"{it['label']} : {it['value']:.1f}{it['unit']}" for it in bad)))
-                note("En vue de face, les angles dépendent beaucoup de l'objectif et du cadrage : une asymétrie légère (< 2–3°) est normale.")
-        else:
-            st.info("Aucune photo de face importée.")
+                st.info("Aucune photo de face importée.")
 
-    # --- pédalage
-    with t_ped:
-        vr = A["video"]
-        if vr is None:
-            st.info("L'analyse dynamique est disponible avec une vidéo : choisissez « Vidéo de pédalage » en haut de page. Filmez 10 à 15 secondes de pédalage régulier, de profil, sur home-trainer.")
-        else:
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Cadence", f"{vr['cadence']:.0f} tr/min")
-            k2.metric("Genou au point bas", f"{vr['knee_max']:.1f}°")
-            k3.metric("Genou au point haut", f"{vr['knee_min']:.0f}°" if not np.isnan(vr["knee_min"]) else "—")
-            k4.metric("Régularité", f"±{vr['bdc_std']:.1f}°")
-            fig = go.Figure()
-            fig.add_hrect(y0=ranges["knee"][0], y1=ranges["knee"][1], fillcolor="rgba(52,211,153,.14)", line_width=0)
-            fig.add_trace(go.Scatter(x=vr["times"], y=vr["knee"], mode="lines", name="Angle du genou", line=dict(color="#c6f432", width=3)))
-            fig.add_trace(go.Scatter(x=[vr["times"][i] for i in vr["bdc"]], y=[vr["knee"][i] for i in vr["bdc"]], mode="markers", name="Point bas",
-                                     marker=dict(size=10, color="#fb7185")))
-            fig.add_trace(go.Scatter(x=[vr["times"][i] for i in vr["top"]], y=[vr["knee"][i] for i in vr["top"]], mode="markers", name="Point haut",
-                                     marker=dict(size=10, color="#5ec8ff")))
-            fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=330, margin=dict(l=10, r=10, t=10, b=10), font=dict(color="#c9d2de"),
-                              xaxis=dict(title="Temps (s)", gridcolor="rgba(255,255,255,.07)"), yaxis=dict(title="Genou (°)", gridcolor="rgba(255,255,255,.07)"),
-                              legend=dict(orientation="h", y=1.12))
-            stretch(st.plotly_chart, fig)
-            st.caption(f"Zone verte : plage cible du genou ({ranges['knee'][0]}–{ranges['knee'][1]}°). Valeurs moyennées sur {len(vr['bdc'])} tours de manivelle ; image affichée : le tour le plus représentatif.")
-            for lvl, title, txt in core.pedal_notes(vr):
-                card(lvl, title, txt)
-                if lvl != "ok":
-                    extras.append((f"Pédalage — {title}", txt))
-            note("Une vidéo à 20 images/s et une cadence supérieure à 100 tr/min réduisent la précision. Pour une analyse fiable, évitez de filmer de trois-quarts.")
+        # --- pédalage
+        with t_ped:
+            vr = A["video"]
+            if vr is None:
+                st.info("L'analyse dynamique est disponible avec une vidéo : à l'étape 2, choisissez « Vidéo de pédalage ». Filmez 10 à 15 secondes de pédalage régulier, de profil, sur home-trainer.")
+            else:
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric("Cadence", f"{vr['cadence']:.0f} tr/min")
+                k2.metric("Genou au point bas", f"{vr['knee_max']:.1f}°")
+                k3.metric("Genou au point haut", f"{vr['knee_min']:.0f}°" if not np.isnan(vr["knee_min"]) else "—")
+                k4.metric("Régularité", f"±{vr['bdc_std']:.1f}°")
+                fig = go.Figure()
+                fig.add_hrect(y0=ranges["knee"][0], y1=ranges["knee"][1], fillcolor="rgba(52,211,153,.14)", line_width=0)
+                fig.add_trace(go.Scatter(x=vr["times"], y=vr["knee"], mode="lines", name="Angle du genou", line=dict(color="#c6f432", width=3)))
+                fig.add_trace(go.Scatter(x=[vr["times"][i] for i in vr["bdc"]], y=[vr["knee"][i] for i in vr["bdc"]], mode="markers", name="Point bas",
+                                         marker=dict(size=10, color="#fb7185")))
+                fig.add_trace(go.Scatter(x=[vr["times"][i] for i in vr["top"]], y=[vr["knee"][i] for i in vr["top"]], mode="markers", name="Point haut",
+                                         marker=dict(size=10, color="#5ec8ff")))
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=330, margin=dict(l=10, r=10, t=10, b=10), font=dict(color="#c9d2de"),
+                                  xaxis=dict(title="Temps (s)", gridcolor="rgba(255,255,255,.07)"), yaxis=dict(title="Genou (°)", gridcolor="rgba(255,255,255,.07)"),
+                                  legend=dict(orientation="h", y=1.12))
+                stretch(st.plotly_chart, fig)
+                st.caption(f"Zone verte : plage cible du genou ({ranges['knee'][0]}–{ranges['knee'][1]}°). Valeurs moyennées sur {len(vr['bdc'])} tours de manivelle ; image affichée : le tour le plus représentatif.")
+                for lvl, title, txt in core.pedal_notes(vr):
+                    card(lvl, title, txt)
+                    if lvl != "ok":
+                        extras.append((f"Pédalage — {title}", txt))
+                note("Une vidéo à 20 images/s et une cadence supérieure à 100 tr/min réduisent la précision. Pour une analyse fiable, évitez de filmer de trois-quarts.")
 
-    # --- mobilité & douleurs
-    with t_mob:
-        st.markdown("##### Questionnaire de mobilité")
-        st.caption("Réalisez ces tests simples. Cochez « Affiner avec le questionnaire de mobilité » dans la barre latérale pour que vos résultats ajustent les plages cibles.")
-        for t in core.MOBILITY_TESTS:
-            st.radio(t["title"], t["options"], key="mob_" + t["key"], horizontal=True, help=t["help"])
-        prof = core.mobility_profile(mobility_answers())
-        mc1, mc2 = st.columns(2)
-        mc1.metric("Score de mobilité", f"{prof['score']:.0f}/100")
-        mc2.metric("Profil de souplesse", prof["flex_label"])
-        if not ss["use_mob"]:
-            st.info("Ces résultats ne modifient pas encore les plages cibles : activez l'option dans la barre latérale.")
-        else:
-            st.success(f"Plages cibles ajustées : tronc {prof['shifts']['torso']:+d}°, hanche {prof['shifts']['hip']:+d}°, épaule {prof['shifts']['shoulder']:+d}°.")
-        for lvl, title, txt in prof["notes"]:
-            card(lvl, title, txt, tag="Exercice conseillé")
-        if prof["notes"]:
-            extras.append(("Mobilité — exercices", " ; ".join(f"{t} : {x}" for _, t, x in prof["notes"][:3])))
-        st.markdown("##### Douleurs et mesures")
-        if not ss["complaints"]:
-            st.info("Sélectionnez vos douleurs dans la barre latérale pour les rapprocher des mesures de cette analyse.")
-        pains = core.pain_analysis(ss["complaints"], ev)
-        for lvl, name, txt in pains:
-            card(lvl, name, txt, tag="Lien probable" if lvl == "bad" else "Pas de lien direct")
-        if pains:
-            extras.append(("Douleurs signalées", " ; ".join(f"{n} ({'lien probable' if l == 'bad' else 'pas de lien direct'})" for l, n, _ in pains)))
-            note("Une douleur persistante doit être évaluée par un professionnel de santé. Cet outil propose des pistes de réglage, pas un diagnostic.")
+        # --- mobilité & douleurs
+        with t_mob:
+            section("Questionnaire de mobilité", "Réalisez ces tests simples. Cochez « Affiner la souplesse avec le questionnaire de mobilité » dans « Mon profil » "
+                                                 "pour que vos résultats ajustent les plages cibles.", first=True)
+            for t in core.MOBILITY_TESTS:
+                st.radio(t["title"], t["options"], key="mob_" + t["key"], horizontal=True, help=t["help"])
+            prof = core.mobility_profile(mobility_answers())
+            mc1, mc2 = st.columns(2)
+            mc1.metric("Score de mobilité", f"{prof['score']:.0f}/100")
+            mc2.metric("Profil de souplesse", prof["flex_label"])
+            if not ss["use_mob"]:
+                st.info("Ces résultats ne modifient pas encore les plages cibles : activez l'option dans l'onglet « Mon profil ».")
+            else:
+                st.success(f"Plages cibles ajustées : tronc {prof['shifts']['torso']:+d}°, hanche {prof['shifts']['hip']:+d}°, épaule {prof['shifts']['shoulder']:+d}°.")
+            for lvl, title, txt in prof["notes"]:
+                card(lvl, title, txt, tag="Exercice conseillé")
+            if prof["notes"]:
+                extras.append(("Mobilité — exercices", " ; ".join(f"{t} : {x}" for _, t, x in prof["notes"][:3])))
+            section("Douleurs et mesures", "Vos douleurs déclarées sont rapprochées des angles mesurés sur cette analyse.")
+            if not ss["complaints"]:
+                st.info("Indiquez vos douleurs dans l'onglet « Mon profil » pour les rapprocher des mesures de cette analyse.")
+            pains = core.pain_analysis(ss["complaints"], ev)
+            for lvl, name, txt in pains:
+                card(lvl, name, txt, tag="Lien probable" if lvl == "bad" else "Pas de lien direct")
+            if pains:
+                extras.append(("Douleurs signalées", " ; ".join(f"{n} ({'lien probable' if l == 'bad' else 'pas de lien direct'})" for l, n, _ in pains)))
+                note("Une douleur persistante doit être évaluée par un professionnel de santé. Cet outil propose des pistes de réglage, pas un diagnostic.")
 
-    # --- simulateur
-    with t_sim:
-        st.markdown("##### Simulez un réglage avant de le faire")
-        s1, s2 = st.columns(2, gap="large")
-        with s1:
-            d_sel = st.slider("Hauteur de selle (mm)", -30, 30, 0, 1, help="Positif = monter la selle")
-        with s2:
-            d_bar = st.slider("Hauteur de cintre (mm)", -40, 40, 0, 1, help="Positif = relever le cintre")
-        new = dict(m)
-        new["knee"] = core.knee_after_delta(m["knee"], d_sel, seg)
-        new["torso"] = core.torso_after_bar_delta(m["torso"], d_bar, ctx["height"])
-        new["hip"] = m["hip"] + (new["torso"] - m["torso"])
-        ev_new = core.evaluate_all(new, ranges)
-        score_new = core.global_score(ev_new)
-        x1, x2, x3 = st.columns(3)
-        x1.metric("Score postural", f"{score_new:.0f}/100", f"{score_new - gscore:+.0f}")
-        x2.metric("Genou", f"{new['knee']:.1f}°", f"{new['knee'] - m['knee']:+.1f}°")
-        x3.metric("Tronc", f"{new['torso']:.1f}°", f"{new['torso'] - m['torso']:+.1f}°")
-        z1, z2 = st.columns(2)
-        with z1:
-            metric_card("knee", new["knee"], ev_new["knee"], ranges["knee"])
-        with z2:
-            metric_card("torso", new["torso"], ev_new["torso"], ranges["torso"])
-        sc_new = {k: ev_new[k]["score"] for k in ORDER}
-        stretch(st.plotly_chart, radar(sc_new, "Après réglage", scores))
-        note("Modèle simplifié : la selle se déplace verticalement et l'épaule suit le cintre. Le recul de selle, la longueur de potence et les cales ne sont pas simulés. Validez toujours par une nouvelle analyse.")
+    # ==================================================================== SIMULATEUR & TRANSFERT
+    with r_tools:
+        st.caption("Deux outils : tester l'effet d'un réglage avant de toucher au vélo, et reporter vos réglages sur un autre vélo.")
+        t_sim, t_tr = st.tabs(["Simulateur de réglage", "Transfert vers un autre vélo"])
 
-    # --- transfert de réglages
-    with t_tr:
-        st.markdown("##### Transférer vos réglages d'un vélo à un autre")
-        st.caption("Mesurez votre vélo de référence (celui sur lequel vous êtes bien) et le nouveau vélo, puis obtenez la liste des ajustements à faire.")
-        ref, cur = {}, {}
-        ca, cb = st.columns(2, gap="large")
-        ca.markdown("**Vélo de référence**")
-        cb.markdown("**Nouveau vélo**")
-        for key, label, helptxt, default in core.TRANSFER_FIELDS:
-            va = ca.number_input(label, value=float(default), step=1.0, key=f"tr_ref_{key}", help=helptxt or None)
-            vb = cb.number_input(label, value=float(default), step=1.0, key=f"tr_cur_{key}", help=helptxt or None)
-            ref[key], cur[key] = va, vb
-        plan = core.transfer_plan(ref, cur)
-        st.markdown("##### Ajustements à effectuer")
-        for p in plan:
-            card(p["status"], p["label"], f"Référence : <b>{p['ref']:g}</b> · Nouveau vélo : <b>{p['cur']:g}</b>", [p["action"]], tag="À régler" if p["status"] != "ok" else "OK")
-        note("L'ordre conseillé : manivelle, hauteur de selle, recul, puis allonge et dénivelé du cockpit. Terminez par une nouvelle analyse posturale pour valider.")
+        # --- simulateur
+        with t_sim:
+            section("Simulez un réglage avant de le faire", "Déplacez les curseurs : le score et les angles estimés se mettent à jour.", first=True)
+            s1, s2 = st.columns(2, gap="large")
+            with s1:
+                d_sel = st.slider("Hauteur de selle (mm)", -30, 30, 0, 1, help="Positif = monter la selle")
+            with s2:
+                d_bar = st.slider("Hauteur de cintre (mm)", -40, 40, 0, 1, help="Positif = relever le cintre")
+            new = dict(m)
+            new["knee"] = core.knee_after_delta(m["knee"], d_sel, seg)
+            new["torso"] = core.torso_after_bar_delta(m["torso"], d_bar, ctx["height"])
+            new["hip"] = m["hip"] + (new["torso"] - m["torso"])
+            ev_new = core.evaluate_all(new, ranges)
+            score_new = core.global_score(ev_new)
+            x1, x2, x3 = st.columns(3)
+            x1.metric("Score postural", f"{score_new:.0f}/100", f"{score_new - gscore:+.0f}")
+            x2.metric("Genou", f"{new['knee']:.1f}°", f"{new['knee'] - m['knee']:+.1f}°")
+            x3.metric("Tronc", f"{new['torso']:.1f}°", f"{new['torso'] - m['torso']:+.1f}°")
+            z1, z2 = st.columns(2)
+            with z1:
+                metric_card("knee", new["knee"], ev_new["knee"], ranges["knee"])
+            with z2:
+                metric_card("torso", new["torso"], ev_new["torso"], ranges["torso"])
+            sc_new = {k: ev_new[k]["score"] for k in ORDER}
+            stretch(st.plotly_chart, radar(sc_new, "Après réglage", scores))
+            note("Modèle simplifié : la selle se déplace verticalement et l'épaule suit le cintre. Le recul de selle, la longueur de potence et les cales ne sont pas simulés. Validez toujours par une nouvelle analyse.")
 
-    # --- suivi
-    with t_follow:
-        st.markdown(f"##### Enregistrer cette analyse — {active}")
+        # --- transfert de réglages
+        with t_tr:
+            section("Transférer vos réglages d'un vélo à un autre", "Mesurez votre vélo de référence (celui sur lequel vous êtes bien) et le nouveau vélo, puis obtenez la liste des ajustements à faire.", first=True)
+            ref, cur = {}, {}
+            ca, cb = st.columns(2, gap="large")
+            ca.markdown("**Vélo de référence**")
+            cb.markdown("**Nouveau vélo**")
+            for key, label, helptxt, default in core.TRANSFER_FIELDS:
+                va = ca.number_input(label, value=float(default), step=1.0, key=f"tr_ref_{key}", help=helptxt or None)
+                vb = cb.number_input(label, value=float(default), step=1.0, key=f"tr_cur_{key}", help=helptxt or None)
+                ref[key], cur[key] = va, vb
+            plan = core.transfer_plan(ref, cur)
+            section("Ajustements à effectuer")
+            for p in plan:
+                card(p["status"], p["label"], f"Référence : <b>{p['ref']:g}</b> · Nouveau vélo : <b>{p['cur']:g}</b>", [p["action"]], tag="À régler" if p["status"] != "ok" else "OK")
+            note("L'ordre conseillé : manivelle, hauteur de selle, recul, puis allonge et dénivelé du cockpit. Terminez par une nouvelle analyse posturale pour valider.")
+
+    # ==================================================================== SUIVI
+    with r_follow:
+        section(f"Enregistrer cette analyse — {active}", "Donnez-lui un nom pour la retrouver et comparer l'avant / après de vos réglages.", first=True)
         cur_dict = dict(m=m, score=gscore, annotated=annotated, source=A["source"], quality=quality, ev=ev,
                         extra=dict(cadence=round(A["video"]["cadence"], 1), rom=round(A["video"]["rom"], 1)) if A["video"] and not np.isnan(A["video"]["rom"]) else {})
         history_section(active, cur_dict, kp="an_")
 
-    # --- rapport
-    with t_rep:
-        st.markdown("##### Rapport personnalisé")
+    # ==================================================================== RAPPORT
+    with r_rep:
+        section("Rapport personnalisé", "Un document à garder ou à transmettre : score, image annotée, mesures et plan d'action.", first=True)
         r1, r2 = st.columns(2)
         studio_name = r1.text_input("Nom du studio / de la marque", value=ss["studio"] if fitter else "", key="rep_studio", placeholder="VeloFit AI Studio")
         client_name = r2.text_input("Nom du cycliste", value=active if active != "Invité" else "", key="rep_client")
@@ -833,4 +1088,18 @@ with t_main:
         e1, e2 = st.columns(2)
         e1.download_button("Image annotée (PNG)", core.png_bytes(annotated), "velofit_analyse.png", "image/png", key="dl_png")
         e2.download_button("Mesures (CSV)", df_m.to_csv(index=False).encode("utf-8"), "velofit_mesures.csv", "text/csv", key="dl_csv")
-        note("Le PDF reprend le score, l'image annotée, les mesures, le plan d'action et les sections complétées dans les autres onglets (recul de selle, vue de face, pédalage, douleurs, mobilité).")
+        note("Le PDF reprend le score, l'image annotée, les mesures, le plan d'action et les sections complétées dans les autres rubriques (recul de selle, vue de face, pédalage, douleurs, mobilité).")
+
+    # --- vélo 3D du résumé : construit en dernier pour tenir compte du recul de selle mesuré plus haut
+    adjustments = core.bike_adjustments(m, ev, ranges, ctx, kops_for_bike)
+    with next_box:
+        first_adj = next((a for a in adjustments if a["status"] in ("bad", "warn")), None)
+        if first_adj:
+            H(ui_kit.cta(f"Par où commencer : {first_adj['title'][0].lower() + first_adj['title'][1:]}",
+                         " · ".join(_html.escape(x) for x in first_adj["reasons"])
+                         + ". Faites ce réglage seul, roulez, puis reprenez une photo pour vérifier avant de passer au suivant."))
+        else:
+            H(ui_kit.cta("Votre position est dans la cible", "Aucun réglage prioritaire. Enregistrez cette analyse pour garder une référence, "
+                                                              "et refaites un contrôle après tout changement de matériel."))
+    with bike_box:
+        bike_view(adjustments)

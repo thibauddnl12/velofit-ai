@@ -496,6 +496,139 @@ def bar_width_suggestion(shoulder_cm):
     return min(options, key=lambda o: abs(o - shoulder_cm))
 
 
+# Pneus types par discipline : pression de départ (bar, chambre à air) pour un cycliste de 71 kg, poids du vélo type (kg).
+TYRES = {
+    "Route / Endurance": dict(label="28 mm", front=4.8, rear=5.1, bike=8.5, lo=3.5, hi=6.5, step=0.1),
+    "Compétition / Course": dict(label="26 mm", front=5.5, rear=5.8, bike=7.5, lo=4.0, hi=7.0, step=0.1),
+    "Gravel": dict(label="40 mm", front=2.5, rear=2.7, bike=9.5, lo=1.8, hi=4.0, step=0.1),
+    "VTT / XC": dict(label="2,25 pouces (57 mm)", front=1.50, rear=1.65, bike=12.0, lo=1.1, hi=2.4, step=0.05),
+    "Triathlon / CLM": dict(label="25 mm", front=5.8, rear=6.1, bike=9.0, lo=4.5, hi=7.5, step=0.1),
+}
+
+
+def fr_num(x) -> str:
+    """Nombre au format français (virgule décimale), sans zéros inutiles."""
+    return f"{x:g}".replace(".", ",")
+
+
+def tyre_pressure(discipline, weight_kg):
+    """Pression de départ indicative (bar), proportionnelle au poids cycliste + vélo. None si le poids est inconnu."""
+    t = TYRES.get(discipline)
+    if t is None or not weight_kg or weight_kg < 30:
+        return None
+    k = (float(weight_kg) + t["bike"]) / (71.0 + t["bike"])
+
+    def fit(p):
+        p = max(t["lo"], min(t["hi"], p * k))
+        return round(round(p / t["step"]) * t["step"], 2)
+
+    return dict(front=fit(t["front"]), rear=fit(t["rear"]), tyre=t["label"], system=float(weight_kg) + t["bike"], bike=t["bike"])
+
+
+_ADJ_AXIS = {"up": "v", "down": "v", "fwd": "h", "back": "h", "longer": "l", "shorter": "l", None: "c"}
+_ADJ_RANK = {"bad": 0, "warn": 1, "ok": 2, "info": 3}
+
+
+def bike_adjustments(m, ev, ranges, ctx, kops=None):
+    """Liste structurée des réglages à faire sur le vélo, dérivée des mêmes règles que les recommandations.
+
+    Chaque élément : n (numéro), part (saddle, bars, stem, cleats, crank, bar_width, tyres), dir (up, down, fwd, back,
+    longer, shorter ou None), amount (texte court, ex. « 5 mm »), status (bad, warn, info), title (action),
+    reasons (liste de constats), conflicts (mesures qui demanderaient le réglage inverse)."""
+    seg = ctx["seg"]
+    tt = ctx.get("discipline", "").startswith("Triathlon")
+    cand = []
+
+    def add(key, part, direction, amount, title, reason, status=None):
+        cand.append(dict(key=key, part=part, dir=direction, amount=amount, title=title, reasons=[reason], conflicts=[],
+                         status=status or ev[key]["status"], w=META[key]["w"] if key in META else 0.0))
+
+    def rng(key):
+        return f"cible {ranges[key][0]}–{ranges[key][1]}°"
+
+    k = ev["knee"]
+    if k["dir"] == "low":
+        mm = abs(round(saddle_delta_mm(m["knee"], ranges["knee"][0] + 2, seg)))
+        add("knee", "saddle", "up", f"{mm} mm", f"Monter la selle d'environ {mm} mm", f"Selle trop basse : genou à {m['knee']:.1f}° ({rng('knee')})")
+    elif k["dir"] == "high":
+        mm = abs(round(saddle_delta_mm(m["knee"], ranges["knee"][1] - 2, seg)))
+        add("knee", "saddle", "down", f"{mm} mm", f"Descendre la selle d'environ {mm} mm", f"Selle trop haute : genou à {m['knee']:.1f}° ({rng('knee')})")
+
+    if kops and kops.get("crank_ok") and kops.get("status") in ("warn", "bad"):
+        off = kops["offset_mm"]
+        if off > 0:
+            cand.append(dict(key="kops", part="saddle", dir="back", amount=f"{abs(off):.0f} mm", title=f"Reculer la selle d'environ {abs(off):.0f} mm",
+                             reasons=[f"Recul de selle : le genou dépasse l'axe de pédale de {off:.0f} mm"], conflicts=[], status=kops["status"], w=0.25))
+        else:
+            cand.append(dict(key="kops", part="saddle", dir="fwd", amount=f"{abs(off):.0f} mm", title=f"Avancer la selle d'environ {abs(off):.0f} mm",
+                             reasons=[f"Recul de selle : le genou est {abs(off):.0f} mm derrière l'axe de pédale"], conflicts=[], status=kops["status"], w=0.25))
+
+    k = ev["torso"]
+    if k["dir"] == "low":
+        add("torso", "bars", "up", "10 mm", "Relever le cintre de 10 mm (entretoises)", f"Posture plus basse que la cible : tronc à {m['torso']:.0f}° ({rng('torso')})")
+    elif k["dir"] == "high":
+        add("torso", "bars", "down", "5 à 10 mm", "Abaisser le cintre de 5 à 10 mm si vous visez la performance",
+            f"Posture plus relevée que la cible : tronc à {m['torso']:.0f}° ({rng('torso')})")
+    k = ev["hip"]
+    if k["dir"] == "low":
+        add("hip", "bars", "up", "", "Relever le cintre ou raccourcir légèrement la potence", f"Hanche trop fermée : {m['hip']:.0f}° ({rng('hip')})")
+    elif k["dir"] == "high":
+        add("hip", "bars", "down", "", "Abaisser progressivement le cintre si vous recherchez la performance", f"Hanche très ouverte : {m['hip']:.0f}° ({rng('hip')})")
+    k = ev["shoulder"]
+    if k["dir"] == "high":
+        add("shoulder", "stem", "shorter", "10 mm", "Raccourcir la potence de 10 mm", f"Allonge trop importante : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
+    elif k["dir"] == "low":
+        add("shoulder", "stem", "longer", "10 mm", "Allonger la potence de 10 mm", f"Allonge trop courte : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
+    k = ev["elbow"]
+    if k["dir"] == "high":
+        if tt:
+            add("elbow", "stem", "shorter", "", "Raccourcir l'allonge des prolongateurs", f"Appuis trop éloignés : coude à {m['elbow']:.0f}° ({rng('elbow')})")
+        else:
+            add("elbow", "stem", "shorter", "", "Raccourcir la potence ou relever le cintre", f"Bras quasi tendus : coude à {m['elbow']:.0f}° ({rng('elbow')})")
+    elif k["dir"] == "low":
+        add("elbow", "stem", "longer", "10 mm", "Allonger la potence de 10 mm ou relever légèrement le cintre", f"Coudes très fléchis : {m['elbow']:.0f}° ({rng('elbow')})")
+    k = ev["ankle"]
+    if k["dir"] == "low":
+        add("ankle", "cleats", "fwd", "2 à 3 mm", "Avancer les cales de 2 à 3 mm", f"Talon très bas : cheville à {m['ankle']:.0f}° ({rng('ankle')})")
+    elif k["dir"] == "high":
+        add("ankle", "cleats", None, "", "Contrôler la position des cales (gros orteil à l'aplomb de l'axe de pédale)",
+            f"Pointe de pied très tendue : cheville à {m['ankle']:.0f}° ({rng('ankle')})")
+
+    cand.sort(key=lambda c: (_ADJ_RANK.get(c["status"], 9), -c["w"]))
+    out, seen = [], {}
+    for c in cand:
+        slot = (c["part"], _ADJ_AXIS[c["dir"]])
+        first = seen.get(slot)
+        if first is None:
+            seen[slot] = c
+            out.append(c)
+        elif first["dir"] == c["dir"]:
+            first["reasons"] += c["reasons"]
+            if not first["amount"] and c["amount"]:
+                first["amount"], first["title"] = c["amount"], c["title"]
+        else:
+            first["conflicts"] += c["reasons"]
+
+    # repères matériel calculés depuis le profil (à vérifier, pas forcément à changer)
+    if ctx.get("inseam", 0) > 0:
+        best, _raw = crank_length_suggestion(ctx["inseam"])
+        out.append(dict(key="crank", part="crank", dir=None, amount=f"{fr_num(best)} mm", title=f"Vérifier la longueur des manivelles : {fr_num(best)} mm conseillés",
+                        reasons=[f"Environ 21,6 % de votre entrejambe ({ctx['inseam']} cm)"], conflicts=[], status="info", w=0))
+    if ctx.get("shoulder_w", 0) > 0:
+        bw = bar_width_suggestion(ctx["shoulder_w"])
+        out.append(dict(key="bar_width", part="bar_width", dir=None, amount=f"{bw} cm", title=f"Vérifier la largeur du cintre : {bw} cm conseillés",
+                        reasons=[f"Proche de votre largeur d'épaules ({ctx['shoulder_w']} cm)"], conflicts=[], status="info", w=0))
+    tp = tyre_pressure(ctx.get("discipline", ""), ctx.get("weight", 0))
+    if tp:
+        out.append(dict(key="tyres", part="tyres", dir=None, amount=f"{fr_num(tp['front'])} / {fr_num(tp['rear'])} bar",
+                        title=f"Pression de départ : {fr_num(tp['front'])} bar à l'avant, {fr_num(tp['rear'])} bar à l'arrière",
+                        reasons=[f"Pneus de {tp['tyre']}, {ctx['weight']} kg + vélo d'environ {fr_num(tp['bike'])} kg (valeur indicative)"], conflicts=[], status="info", w=0))
+    for n, c in enumerate(out, 1):
+        c["n"] = n
+        c.pop("w", None)
+    return out
+
+
 # ------------------------------------------------------------------------------
 #  DESSIN SUR L'IMAGE
 # ------------------------------------------------------------------------------
@@ -1216,7 +1349,7 @@ def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, stu
             for r in recs if r["status"] != "ok"]
     return dict(
         studio=studio or "VeloFit AI Studio", client=client or "Cycliste", date=datetime.now().strftime("%d/%m/%Y"),
-        discipline=ctx["discipline"], goal=ctx["goal"], flex=ctx["flex"], height=ctx["height"],
+        discipline=ctx["discipline"], goal=ctx["goal"], flex=ctx["flex"], height=ctx["height"], weight=int(ctx.get("weight") or 0),
         score=float(score), verdict=title, verdict_sub=sub, quality=float(quality), rows=rows, todo=todo,
         image_png=png_bytes(annotated_rgb), logo=logo_bytes, extras=[(t, _plain(x)) for t, x in (extras or [])],
         disclaimer="Outil indicatif : ne remplace pas l'avis d'un professionnel du bike-fitting ni d'un professionnel de santé en cas de douleur persistante.",
@@ -1225,7 +1358,7 @@ def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, stu
 
 def report_markdown(r):
     lines = [f"# Rapport {r['studio']}", "", f"*{r['client']} — {r['date']}*", "",
-             f"**Discipline :** {r['discipline']} · **Objectif :** {r['goal']} · **Souplesse :** {r['flex']} · **Taille :** {r['height']} cm  ",
+             f"**Discipline :** {r['discipline']} · **Objectif :** {r['goal']} · **Souplesse :** {r['flex']} · **Taille :** {r['height']} cm" + (f" · **Poids :** {r['weight']} kg" if r.get("weight") else "") + "  ",
              f"**Score postural :** {r['score']:.0f}/100 ({r['verdict']}) · **Qualité de la prise de vue :** {r['quality']:.0f}/100", "",
              "## Mesures", "", "| Mesure | Valeur | Cible | Statut |", "|---|---|---|---|"]
     for row in r["rows"]:
@@ -1270,7 +1403,7 @@ li{{margin-bottom:8px}} .note{{font-size:.8rem;color:#64748b;border-top:1px soli
 <header>{logo}<div><h1>{e(r['studio'])}</h1><p>{e(r['client'])} · {e(r['date'])}</p></div></header>
 <section><div class="score"><div class="ring">{r['score']:.0f}</div>
 <div><h2 style="margin:0">{e(r['verdict'])}</h2><p>{e(r['verdict_sub'])}</p>
-<p style="color:#64748b">{e(r['discipline'])} · objectif {e(r['goal'])} · souplesse {e(r['flex'])} · {r['height']} cm · qualité photo {r['quality']:.0f}/100</p></div></div>
+<p style="color:#64748b">{e(r['discipline'])} · objectif {e(r['goal'])} · souplesse {e(r['flex'])} · {r['height']} cm{(' · ' + str(r['weight']) + ' kg') if r.get('weight') else ''} · qualité photo {r['quality']:.0f}/100</p></div></div>
 {('<img class="main" src="data:image/png;base64,' + img + '">') if img else ''}
 <h2>Mesures</h2><table><tr><th>Mesure</th><th>Valeur</th><th>Cible</th><th>Statut</th></tr>{rows}</table>
 <h2>Plan d'action</h2><ol>{todo}</ol>{extras}
@@ -1368,7 +1501,7 @@ def _report_pdf_pillow(r):
     state["y"] = ytxt
     text(r["verdict_sub"], _font(24), MUT, x=cx + rad + 40, width=W - (cx + rad + 40) - M)
     state["y"] = max(state["y"], cy + rad + 30)
-    text(f"{r['discipline']} - objectif {r['goal']} - souplesse {r['flex']} - {r['height']} cm - qualité photo {r['quality']:.0f}/100", _font(22), MUT)
+    text(f"{r['discipline']} - objectif {r['goal']} - souplesse {r['flex']} - {r['height']} cm{(' - ' + str(r['weight']) + ' kg') if r.get('weight') else ''} - qualité photo {r['quality']:.0f}/100", _font(22), MUT)
     state["y"] += 10
 
     if r["image_png"]:
@@ -1571,7 +1704,12 @@ def _report_pdf_reportlab(r):
     top = Table([[score_dial(r["score"], col), right]], colWidths=[40 * mm, CW - 40 * mm])
     top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     E += [top, Spacer(1, 8)]
-    infot = Table(info, colWidths=[CW * .27, CW * .17, CW * .17, CW * .12, CW * .27])
+    widths = [CW * .27, CW * .17, CW * .17, CW * .12, CW * .27]
+    if r.get("weight"):
+        info[0].insert(4, Paragraph("POIDS", S["th"]))
+        info[1].insert(4, Paragraph(f"{r['weight']} kg", S["cellb"]))
+        widths = [CW * .25, CW * .16, CW * .15, CW * .10, CW * .10, CW * .24]
+    infot = Table(info, colWidths=widths)
     infot.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                                ("LEFTPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     E += [infot, Spacer(1, 10)]

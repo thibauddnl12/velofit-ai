@@ -1,0 +1,33 @@
+# Déploiement sur Render.com (offre payante : un disque persistant est nécessaire pour conserver les comptes)
+services:
+  - type: web
+    name: velofit-ai
+    runtime: python
+    plan: starter            # 512 Mo de mémoire : prévoir "standard" si l'analyse vidéo plante
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    disk:
+      name: velofit-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: VELOFIT_DATA
+        value: /var/data
+      - key: ADMIN_USERNAME
+        sync: false          # à saisir dans le tableau de bord Render
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: SMTP_HOST          # envoi des e-mails « mot de passe oublié »
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false

@@ -1,5 +1,5 @@
 # ==============================================================================
-#  auth_ui.py — pages de connexion, abonnement et administration (Streamlit)
+#  auth_ui.py — connexion, mot de passe oublié, abonnement et administration (Streamlit)
 # ==============================================================================
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 import accounts as acc
+import mailer
 import ui_kit
 
 
@@ -47,8 +48,12 @@ def _fmt_date(s):
 
 
 @st.cache_resource(show_spinner=False)
-def _bootstrap_admin(username: str, password: str):
-    return acc.ensure_admin(username, password)
+def _bootstrap_admin(username: str, password: str, email: str = ""):
+    return acc.ensure_admin(username, password, email)
+
+
+def _mail_ready() -> bool:
+    return mailer.is_configured(_secret)
 
 
 # ------------------------------------------------------------------------------
@@ -57,9 +62,51 @@ def _bootstrap_admin(username: str, password: str):
 def _setup_help():
     _H(ui_kit.hero("Compte administrateur requis", "Aucun administrateur n'est configuré. Définissez deux secrets, puis relancez l'application.", "Configuration"))
     st.markdown("**En local**, créez le fichier `.streamlit/secrets.toml` à côté de `app.py` :")
-    st.code('ADMIN_USERNAME = "votre_identifiant"\nADMIN_PASSWORD = "un-mot-de-passe-solide"\n# optionnel (paiements Stripe)\nSTRIPE_SECRET_KEY = "sk_test_..."', language="toml")
+    st.code('ADMIN_USERNAME = "votre_identifiant"\nADMIN_PASSWORD = "un-mot-de-passe-solide"\nADMIN_EMAIL = "vous@exemple.fr"\n'
+            '# optionnel (paiements Stripe)\nSTRIPE_SECRET_KEY = "sk_test_..."', language="toml")
     st.markdown("**Sur Streamlit Community Cloud** : « Settings » → « Secrets », puis collez les mêmes lignes.")
     st.caption("Le mot de passe administrateur n'est jamais enregistré en clair dans la base : il est haché. Il est mis à jour à chaque démarrage si vous le changez dans les secrets.")
+
+
+def _forgot_tab(cfg: dict):
+    """Mot de passe oublié : un code à 6 chiffres est envoyé par e-mail, puis sert à choisir un nouveau mot de passe."""
+    _H(ui_kit.form_section("1 · Recevez un code par e-mail", "Il est envoyé à l'adresse enregistrée sur votre compte.", first=True))
+    with st.form("forgot_form"):
+        ident = st.text_input("Identifiant ou adresse e-mail du compte", key="fg_ident")
+        go = st.form_submit_button("Recevoir un code", type="primary")
+    if go:
+        ident = (ident or "").strip()
+        if not _mail_ready():
+            st.warning("L'envoi d'e-mails n'est pas encore activé sur ce site. Demandez à l'administrateur de réinitialiser votre mot de passe."
+                       + (f" Contact : {cfg['contact']}" if cfg.get("contact") else ""))
+        elif not ident:
+            st.error("Indiquez votre identifiant ou votre adresse e-mail.")
+        else:
+            user, code, _why = acc.request_reset(ident)
+            if user is not None:
+                subject, text, html = mailer.reset_message(user["username"], code, acc.RESET_MINUTES)
+                ok, msg = mailer.send(_secret, user["email"], subject, text, html)
+                if not ok:
+                    print(f"[VeloFit] E-mail de réinitialisation non envoyé : {msg}", flush=True)   # visible dans les journaux du serveur
+            st.session_state["rs_ident"] = ident
+            # même message que le compte existe ou non : on ne révèle pas qui est inscrit
+            st.success(f"Si un compte correspond, un e-mail avec un code à 6 chiffres vient de partir vers l'adresse enregistrée. "
+                       f"Il est valable {acc.RESET_MINUTES} minutes. Pensez à vérifier les courriers indésirables ; "
+                       f"{acc.RESET_MAX_PER_HOUR} codes au maximum peuvent être demandés par heure.")
+    _H(ui_kit.form_section("2 · Choisissez un nouveau mot de passe", "Saisissez le code reçu, puis votre nouveau mot de passe."))
+    with st.form("reset_form"):
+        ident2 = st.text_input("Identifiant ou adresse e-mail du compte", key="rs_ident")
+        code = st.text_input("Code reçu par e-mail (6 chiffres)", key="rs_code")
+        p1 = st.text_input("Nouveau mot de passe (8 caractères minimum)", type="password", key="rs_pw1")
+        p2 = st.text_input("Confirmer le nouveau mot de passe", type="password", key="rs_pw2")
+        go2 = st.form_submit_button("Changer mon mot de passe", type="primary")
+    if go2:
+        if p1 != p2:
+            st.error("Les deux mots de passe ne correspondent pas.")
+        else:
+            ok, msg = acc.reset_password(ident2, code, p1)
+            (st.success if ok else st.error)(msg)
+    st.caption("Pas d'e-mail enregistré sur votre compte ? Demandez à l'administrateur de réinitialiser votre mot de passe.")
 
 
 def _login_page():
@@ -67,7 +114,7 @@ def _login_page():
     free = acc.setting_int(cfg, "free_credits")
     _H(ui_kit.hero("VeloFit AI Studio", f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité."))
     allow = cfg["allow_signup"] == "1"
-    names = ["Connexion"] + (["Créer un compte"] if allow else [])
+    names = ["Connexion"] + (["Créer un compte"] if allow else []) + ["Mot de passe oublié"]
     _l, _mid, _r = st.columns([1, 1.5, 1])
     with _mid:
         tabs = st.tabs(names)
@@ -85,12 +132,12 @@ def _login_page():
                 st.rerun()
         if not allow:
             st.caption("Les inscriptions sont fermées : demandez un compte à l'administrateur.")
-        st.caption("Mot de passe oublié ? Demandez à l'administrateur de le réinitialiser.")
+        st.caption("Mot de passe oublié ? Ouvrez l'onglet « Mot de passe oublié » ci-dessus pour recevoir un code par e-mail.")
     if allow:
         with tabs[1]:
             with st.form("signup_form"):
                 u = st.text_input("Identifiant (lettres minuscules, chiffres, _ ou -)", key="su_user")
-                e = st.text_input("E-mail (facultatif, utile pour la facturation)", key="su_mail")
+                e = st.text_input("Adresse e-mail (pour récupérer votre mot de passe en cas d'oubli)", key="su_mail")
                 p1 = st.text_input("Mot de passe (8 caractères minimum)", type="password", key="su_pw1")
                 p2 = st.text_input("Confirmer le mot de passe", type="password", key="su_pw2")
                 ok_rgpd = st.checkbox("J'accepte que mes photos et vidéos soient traitées pour produire l'analyse. Elles ne sont conservées que si j'enregistre l'analyse dans mon historique.", key="su_rgpd")
@@ -101,19 +148,21 @@ def _login_page():
                 elif not ok_rgpd:
                     st.error("Merci d'accepter le traitement de vos images pour continuer.")
                 else:
-                    ok, msg = acc.create_user(u, p1, email=e, check_signup=True)
+                    ok, msg = acc.create_user(u, p1, email=e, check_signup=True, require_email=True)
                     if ok:
                         st.session_state["auth_user"] = acc.clean_username(u)
                         st.rerun()
                     else:
                         st.error(msg)
+    with tabs[-1]:
+        _forgot_tab(cfg)
 
 
 def gate():
     """Retourne l'utilisateur connecté (dict). Sinon affiche la page de connexion et arrête le script."""
     a_user, a_pw = _secret("ADMIN_USERNAME"), _secret("ADMIN_PASSWORD")
     if a_user and a_pw:
-        ok, msg = _bootstrap_admin(a_user, a_pw)
+        ok, msg = _bootstrap_admin(a_user, a_pw, _secret("ADMIN_EMAIL"))
         if not ok:
             st.error(msg)
             st.stop()
@@ -131,8 +180,12 @@ def gate():
 
 
 def logout():
-    for k in ("auth_user", "_pdf", "_analysis", "_video_key", "_video_res"):
-        st.session_state.pop(k, None)
+    """Déconnexion : tout l'état de la session est effacé, pour qu'un autre compte reparte de zéro sur le même appareil."""
+    for k in list(st.session_state.keys()):
+        try:
+            del st.session_state[k]
+        except Exception:
+            pass
     st.rerun()
 
 
@@ -184,11 +237,23 @@ def sidebar_box(user: dict):
     if not stt["is_admin"]:
         with st.expander("Abonnement" if not stt["sub_active"] else "Prolonger"):
             subscribe_panel(user, "sb_")
-    with st.expander("Mon mot de passe"):
+    has_mail = bool(acc.clean_email(user.get("email")))
+    if not has_mail:
+        st.warning("Ajoutez votre e-mail ci-dessous : sans lui, impossible de récupérer votre mot de passe en cas d'oubli.")
+    with st.expander("E-mail et mot de passe", expanded=not has_mail):
+        with st.form("mail_form"):
+            em = st.text_input("Adresse e-mail (récupération du mot de passe)", value=user.get("email") or "", key="acct_mail")
+            go_mail = st.form_submit_button("Enregistrer l'e-mail")
+        if go_mail:
+            ok, msg = acc.set_email(user["username"], em)
+            (st.success if ok else st.error)(msg)
+        if acc.clean_username(_secret("ADMIN_USERNAME")) == user["username"]:
+            st.caption("Ce compte administrateur est défini dans les secrets : pour changer son mot de passe durablement, modifiez "
+                       "ADMIN_PASSWORD dans les secrets. Un changement fait ici (ou par e-mail) est annulé au prochain redémarrage.")
         with st.form("pw_form", clear_on_submit=True):
             old = st.text_input("Mot de passe actuel", type="password")
             new = st.text_input("Nouveau mot de passe", type="password")
-            go = st.form_submit_button("Modifier", type="primary")
+            go = st.form_submit_button("Modifier le mot de passe", type="primary")
         if go:
             ok, msg = acc.change_own_password(user["username"], old, new)
             (st.success if ok else st.error)(msg)
@@ -235,7 +300,7 @@ def admin_panel(admin: dict):
     with st.form("adm_create", clear_on_submit=False):
         a1, a2 = st.columns(2)
         nu = a1.text_input("Identifiant", key="adm_nu")
-        ne = a2.text_input("E-mail (facultatif)", key="adm_ne")
+        ne = a2.text_input("E-mail (conseillé : sert à récupérer le mot de passe)", key="adm_ne")
         npw = a1.text_input("Mot de passe (vide = générer automatiquement)", type="password", key="adm_npw")
         nrole = a2.selectbox("Rôle", ["user", "admin"], key="adm_nrole")
         ncred = a1.number_input("Analyses gratuites", 0, 1000, acc.setting_int(acc.get_settings(), "free_credits"), key="adm_ncred")
@@ -275,6 +340,13 @@ def admin_panel(admin: dict):
         if b3.button("Retirer l'abonnement", key="adm_unsub"):
             acc.clear_subscription(sel)
             st.rerun()
+        m1, m2 = st.columns(2)
+        newmail = m1.text_input("Adresse e-mail de ce compte", value=target.get("email") or "", key=f"adm_mail_{sel}")
+        m2.write("")
+        m2.write("")
+        if m2.button("Enregistrer l'e-mail", key="adm_mail_btn"):
+            ok, msg = acc.set_email(sel, newmail)
+            (st.success if ok else st.error)(msg)
         d1, d2 = st.columns(2)
         newpw = d1.text_input("Nouveau mot de passe pour ce compte", type="password", key="adm_resetpw")
         if d1.button("Réinitialiser le mot de passe", key="adm_reset"):
@@ -300,6 +372,40 @@ def admin_panel(admin: dict):
                 if st.button("Supprimer définitivement", key="adm_del", disabled=not sure):
                     acc.delete_user(sel, delete_data=wipe)
                     st.rerun()
+
+    st.markdown("##### E-mails (mot de passe oublié)")
+    mcfg = mailer.settings(_secret)
+    no_mail = sum(1 for u in users if not acc.clean_email(u.get("email")))
+    if mcfg is None:
+        st.warning("L'envoi d'e-mails n'est pas configuré : les utilisateurs ne peuvent pas récupérer leur mot de passe seuls. "
+                   "Ajoutez SMTP_HOST, SMTP_USER et SMTP_PASSWORD dans les secrets (voir ci-dessous).")
+    else:
+        st.caption(f"Envoi configuré : serveur {mcfg['host']}, port {mcfg['port']}, expéditeur {mcfg['sender']}.")
+        t1, t2 = st.columns(2)
+        dest = t1.text_input("Envoyer un e-mail de test à", value=admin.get("email") or "", key="adm_test_to")
+        t2.write("")
+        t2.write("")
+        if t2.button("Envoyer le test", key="adm_test_btn"):
+            if acc.check_email(acc.clean_email(dest)):
+                st.error("Adresse e-mail invalide.")
+            else:
+                with st.spinner("Envoi…"):
+                    ok, msg = mailer.send(_secret, acc.clean_email(dest), "VeloFit AI Studio — e-mail de test",
+                                          "Ceci est un e-mail de test : l'envoi fonctionne, la récupération du mot de passe est active.")
+                (st.success if ok else st.error)(msg + (" Vérifiez la boîte de réception (et les indésirables)." if ok else ""))
+    if no_mail:
+        st.caption(f"{no_mail} compte(s) sans adresse e-mail : ils ne pourront pas recevoir de code. Vous pouvez saisir leur adresse dans « Gérer un compte ».")
+    with st.expander("Comment activer l'envoi d'e-mails ?"):
+        st.markdown(
+            "L'application envoie les codes par SMTP, avec n'importe quelle boîte e-mail. Exemple avec **Gmail** :\n"
+            "1. Sur votre compte Google, activez la **validation en deux étapes** (Sécurité).\n"
+            "2. Ouvrez `myaccount.google.com/apppasswords`, créez un **mot de passe d'application** (16 lettres).\n"
+            "3. Dans les secrets (Streamlit Cloud : « Settings » → « Secrets »), ajoutez :")
+        st.code('SMTP_HOST = "smtp.gmail.com"\nSMTP_PORT = "587"\nSMTP_USER = "votre.adresse@gmail.com"\nSMTP_PASSWORD = "le mot de passe d\'application"\n'
+                '# facultatif : adresse affichée comme expéditeur\n# SMTP_FROM = "votre.adresse@gmail.com"', language="toml")
+        st.markdown("4. Enregistrez, relancez l'application, puis utilisez « Envoyer le test » ci-dessus.\n\n"
+                    "Le mot de passe habituel de la boîte ne fonctionne pas avec Gmail : il faut le mot de passe d'application. "
+                    "Avec un autre fournisseur, utilisez son serveur SMTP (port 587 ou 465).")
 
     st.markdown("##### Réglages de l'abonnement")
     cfg = acc.get_settings()

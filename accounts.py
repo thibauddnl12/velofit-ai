@@ -1,5 +1,5 @@
 # ==============================================================================
-#  accounts.py — comptes, quotas d'analyses, abonnements et paiements (SQLite)
+#  accounts.py — comptes, mots de passe oubliés, quotas d'analyses, abonnements et paiements (SQLite)
 #  Aucune dépendance Streamlit : testable seul.
 # ==============================================================================
 from __future__ import annotations
@@ -27,6 +27,10 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PBKDF2_ITERS = 310_000
 MAX_FAILS = 5
 LOCK_MINUTES = 10
+RESET_MINUTES = 15            # durée de validité d'un code de réinitialisation
+RESET_MAX_TRIES = 5           # essais autorisés par code
+RESET_MAX_PER_HOUR = 3        # codes envoyés au maximum par heure et par compte
+RESET_ITERS = 60_000
 
 DEFAULT_SETTINGS = {
     "free_credits": "3",          # analyses gratuites offertes à chaque nouveau compte
@@ -54,6 +58,10 @@ CREATE TABLE IF NOT EXISTS usage(
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS payments(
   session_id TEXT PRIMARY KEY, username TEXT NOT NULL, amount INTEGER, currency TEXT, ts TEXT NOT NULL, days INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS resets(
+  username TEXT PRIMARY KEY, code_hash TEXT NOT NULL, salt TEXT NOT NULL, expires TEXT NOT NULL,
+  tries INTEGER NOT NULL DEFAULT 0, window_start TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -116,6 +124,26 @@ def check_username(u: str):
     return None
 
 
+def clean_email(e: str) -> str:
+    return (e or "").strip().lower()
+
+
+def check_email(e: str):
+    if not EMAIL_RE.match(e or "") or len(e) > 254:
+        return "Adresse e-mail invalide."
+    return None
+
+
+def email_owners(email: str, exclude: str = "") -> list[str]:
+    """Identifiants des comptes qui utilisent déjà cette adresse (sans tenir compte de la casse)."""
+    e = clean_email(email)
+    if not e:
+        return []
+    with _db() as con:
+        rows = con.execute("SELECT username FROM users WHERE lower(email)=? AND username<>?", (e, clean_username(exclude))).fetchall()
+    return [r["username"] for r in rows]
+
+
 def check_password(p: str):
     if len(p or "") < 8:
         return "Mot de passe trop court : 8 caractères minimum."
@@ -152,15 +180,21 @@ def setting_int(cfg: dict, key: str) -> int:
 # ------------------------------------------------------------------------------
 #  COMPTES
 # ------------------------------------------------------------------------------
-def create_user(username, password, role="user", free_credits=None, sub_days=0, email="", check_signup=False):
+def create_user(username, password, role="user", free_credits=None, sub_days=0, email="", check_signup=False, require_email=False):
     """Crée un compte. Retourne (ok, message)."""
     u = clean_username(username)
     err = check_username(u) or check_password(password)
     if err:
         return False, err
-    email = (email or "").strip()
-    if email and not EMAIL_RE.match(email):
-        return False, "Adresse e-mail invalide."
+    email = clean_email(email)
+    if require_email and not email:
+        return False, "Indiquez une adresse e-mail : elle sert à récupérer votre mot de passe."
+    if email:
+        err = check_email(email)
+        if err:
+            return False, err
+        if email_owners(email, exclude=u):
+            return False, "Cette adresse e-mail est déjà utilisée par un autre compte."
     if role not in ("user", "admin"):
         return False, "Rôle inconnu."
     cfg = get_settings()
@@ -234,6 +268,21 @@ def change_own_password(username, old, new):
     return set_password(username, new)
 
 
+def set_email(username, email):
+    """Enregistre l'adresse e-mail d'un compte (unique). Retourne (ok, message)."""
+    u, e = clean_username(username), clean_email(email)
+    if not e:
+        return False, "Indiquez une adresse e-mail."
+    err = check_email(e)
+    if err:
+        return False, err
+    if email_owners(e, exclude=u):
+        return False, "Cette adresse e-mail est déjà utilisée par un autre compte."
+    with _db() as con:
+        cur = con.execute("UPDATE users SET email=? WHERE username=?", (e, u))
+    return (cur.rowcount > 0), ("Adresse e-mail enregistrée." if cur.rowcount else "Compte introuvable.")
+
+
 def set_active(username, active: bool):
     with _db() as con:
         con.execute("UPDATE users SET active=? WHERE username=?", (1 if active else 0, clean_username(username)))
@@ -270,20 +319,26 @@ def delete_user(username, delete_data=True):
     with _db() as con:
         con.execute("DELETE FROM users WHERE username=?", (u,))
         con.execute("DELETE FROM usage WHERE username=?", (u,))
+        con.execute("DELETE FROM resets WHERE username=?", (u,))
     if delete_data:
         shutil.rmtree(core.DATA_DIR / "users" / core.safe_name(u), ignore_errors=True)
 
 
-def ensure_admin(username, password):
+def ensure_admin(username, password, email=""):
     """Crée ou met à jour le compte administrateur à partir des secrets / variables d'environnement."""
     u = clean_username(username)
     err = check_username(u) or check_password(password)
     if err:
         return False, "Identifiants administrateur invalides : " + err
+    email = clean_email(email)
+    if email and (check_email(email) or email_owners(email, exclude=u)):
+        email = ""                      # adresse invalide ou déjà prise : on l'ignore plutôt que de bloquer le démarrage
     cur = get_user(u)
     if cur is None:
-        ok, msg = create_user(u, password, role="admin", free_credits=0)
+        ok, msg = create_user(u, password, role="admin", free_credits=0, email=email)
         return ok, msg
+    if email and clean_email(cur.get("email")) != email:
+        set_email(u, email)
     calc = _hash(password, bytes.fromhex(cur["salt"]), cur["iters"])
     if not hmac.compare_digest(calc, cur["pw_hash"]):
         set_password(u, password)
@@ -295,6 +350,86 @@ def ensure_admin(username, password):
 def has_admin() -> bool:
     with _db() as con:
         return con.execute("SELECT 1 FROM users WHERE role='admin' AND active=1 LIMIT 1").fetchone() is not None
+
+
+# ------------------------------------------------------------------------------
+#  MOT DE PASSE OUBLIÉ (code à usage unique envoyé par e-mail)
+# ------------------------------------------------------------------------------
+def find_for_reset(identifier) -> dict | None:
+    """Retrouve un compte par identifiant ou par e-mail (si l'adresse désigne un seul compte)."""
+    ident = (identifier or "").strip().lower()
+    if not ident:
+        return None
+    with _db() as con:
+        if "@" in ident:
+            rows = con.execute("SELECT * FROM users WHERE lower(email)=?", (ident,)).fetchall()
+            return dict(rows[0]) if len(rows) == 1 else None
+        r = con.execute("SELECT * FROM users WHERE username=?", (ident,)).fetchone()
+    return dict(r) if r else None
+
+
+def request_reset(identifier):
+    """Prépare un code à 6 chiffres. Retourne (utilisateur, code, raison).
+
+    raison : "ok", "unknown" (compte introuvable, inactif ou sans e-mail) ou "rate" (trop de demandes).
+    Seule l'empreinte du code est enregistrée ; le code en clair n'existe que dans l'e-mail."""
+    user = find_for_reset(identifier)
+    if user is None or not user["active"] or not clean_email(user.get("email")):
+        return None, None, "unknown"
+    u, t = user["username"], now()
+    with _db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        r = con.execute("SELECT * FROM resets WHERE username=?", (u,)).fetchone()
+        sent, start = 0, t
+        if r is not None:
+            ws = _parse(r["window_start"]) or t
+            if t - ws < timedelta(hours=1):
+                sent, start = int(r["sent"]), ws
+        if sent >= RESET_MAX_PER_HOUR:
+            con.execute("COMMIT")
+            return None, None, "rate"
+        code = f"{secrets.randbelow(10 ** 6):06d}"
+        salt = secrets.token_bytes(16)
+        con.execute(
+            "INSERT INTO resets(username,code_hash,salt,expires,tries,window_start,sent) VALUES(?,?,?,?,0,?,?) "
+            "ON CONFLICT(username) DO UPDATE SET code_hash=excluded.code_hash, salt=excluded.salt, expires=excluded.expires, "
+            "tries=0, window_start=excluded.window_start, sent=excluded.sent",
+            (u, _hash(code, salt, RESET_ITERS), salt.hex(), _iso(t + timedelta(minutes=RESET_MINUTES)), _iso(start), sent + 1))
+        con.execute("COMMIT")
+    return user, code, "ok"
+
+
+def reset_password(identifier, code, new_password):
+    """Change le mot de passe si le code est bon, non expiré et pas déjà utilisé. Retourne (ok, message)."""
+    err = check_password(new_password)
+    if err:
+        return False, err
+    code = re.sub(r"\D", "", str(code or ""))
+    bad = "Code invalide ou expiré. Vérifiez votre saisie ou demandez un nouveau code."
+    user = find_for_reset(identifier)
+    if user is None or not user["active"] or len(code) != 6:
+        _hash(code, b"\x00" * 16, RESET_ITERS)  # temps comparable, que le compte existe ou non
+        return False, bad
+    u, t = user["username"], now()
+    with _db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        r = con.execute("SELECT * FROM resets WHERE username=?", (u,)).fetchone()
+        if r is None or not r["code_hash"] or (_parse(r["expires"]) or t) <= t:
+            con.execute("COMMIT")
+            return False, bad
+        if not hmac.compare_digest(_hash(code, bytes.fromhex(r["salt"]), RESET_ITERS), r["code_hash"]):
+            tries = int(r["tries"]) + 1
+            if tries >= RESET_MAX_TRIES:
+                con.execute("UPDATE resets SET code_hash='', tries=0 WHERE username=?", (u,))
+                con.execute("COMMIT")
+                return False, "Trop d'essais : ce code est annulé. Demandez-en un nouveau."
+            con.execute("UPDATE resets SET tries=? WHERE username=?", (tries, u))
+            con.execute("COMMIT")
+            return False, bad
+        con.execute("UPDATE resets SET code_hash='', tries=0 WHERE username=?", (u,))  # usage unique
+        con.execute("COMMIT")
+    ok, msg = set_password(u, new_password)
+    return ok, ("Mot de passe modifié. Vous pouvez maintenant vous connecter." if ok else msg)
 
 
 # ------------------------------------------------------------------------------
