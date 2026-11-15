@@ -103,6 +103,20 @@ def profile_card(name: str, rows) -> str:
     return f'<div class="pcard"><b>{_esc.escape(name)}</b>{body}</div>'
 
 
+_WARN_ICON = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+              '<path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4.5M12 17.5v.5"/></svg>')
+
+
+def banner(level: str, title: str, text: str, reasons=(), action: str = "") -> str:
+    """Avertissement très visible en tête des résultats. level = "bad" (rouge) ou "warn" (orange).
+    `title`, `reasons` et `action` sont échappés ; `text` peut contenir du HTML."""
+    col = BAD if level == "bad" else WARN
+    li = "".join(f"<li>{_esc.escape(r)}</li>" for r in reasons)
+    act = f'<div class="do"><b>Que faire :</b> {_esc.escape(action)}</div>' if action else ""
+    return (f'<div class="banner {level}" style="--c:{col}" role="alert"><div class="ic">{_WARN_ICON}</div><div class="bx">'
+            f'<div class="bt">{_esc.escape(title)}</div><p>{text}</p>{"<ul>" + li + "</ul>" if li else ""}{act}</div></div>')
+
+
 _ADJ_COLOR = {"bad": BAD, "warn": WARN, "info": ACCENT_2, "ok": OK}
 
 
@@ -272,6 +286,19 @@ a{color:var(--acc);}
 .cta p{margin:4px 0 0; color:#b4bfce; font-size:.94rem; line-height:1.55;}
 .sum-chips{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0;}
 
+/* ---------- avertissement de fiabilité : doit se voir avant tout le reste ---------- */
+.banner{--c:var(--bad); display:flex; gap:16px; align-items:flex-start; border:2px solid var(--c); border-radius:14px; padding:18px 20px; margin:4px 0 18px; background:rgba(251,113,133,.13);}
+.banner.warn{background:rgba(251,191,36,.11);}
+.banner .ic{flex:0 0 44px; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--c); color:#0a0f05;}
+.banner .ic svg{width:26px; height:26px;}
+.banner .bx{flex:1; min-width:0;}
+.banner .bt{font-family:var(--head); font-size:1.3rem; font-weight:700; line-height:1.25; color:var(--c);}
+.banner p{margin:6px 0 0 !important; color:var(--txt) !important; font-size:.98rem; line-height:1.55;}
+.banner ul{margin:8px 0 0; padding-left:18px; color:#c9d2de; font-size:.92rem; line-height:1.6;}
+.banner li{color:#c9d2de !important;}
+.banner .do{margin-top:10px; padding:10px 12px; border-radius:10px; background:rgba(6,9,14,.55); color:var(--txt); font-size:.95rem; line-height:1.5;}
+.banner .do b{color:var(--c);}
+
 /* ---------- liste numérotée des réglages (mêmes numéros que sur le vélo 3D) ---------- */
 .adj{--c:var(--acc2); display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-left:3px solid var(--c); border-radius:12px; margin-bottom:8px; background:rgba(12,17,24,.88);}
 .adj .num{flex:0 0 28px; width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:.9rem; color:#06090e; background:var(--c);}
@@ -386,6 +413,7 @@ a{color:var(--acc);}
   .stp{padding:9px 12px;}
   .sec{margin:22px 0 12px;} .sec .h{font-size:1.12rem;} .sec .s{margin-left:0;}
   .adj{padding:11px 12px;}
+  .banner{padding:14px; gap:12px;} .banner .ic{flex-basis:36px; width:36px; height:36px;} .banner .ic svg{width:21px; height:21px;} .banner .bt{font-size:1.1rem;}
   [data-testid="stForm"]{padding:16px;}
   [data-testid="stFileUploader"] section{padding:14px;}
   [data-testid="stMetric"]{padding:10px;}

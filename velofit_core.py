@@ -35,6 +35,7 @@ STATUS = {
     "ok": ("#34d399", "Optimal"),
     "warn": ("#fbbf24", "À surveiller"),
     "bad": ("#fb7185", "À corriger"),
+    "na": ("#8b97a8", "Non mesurable"),      # angle impossible à juger sur cette photo (manivelle pas à 6 h)
 }
 
 FLEX_SHIFT = {"Limitée": 5, "Moyenne": 0, "Très souple": -4}
@@ -364,12 +365,74 @@ def evaluate(value, lo, hi, tol):
     return {"status": status, "score": score, "dist": dist, "dir": direction}
 
 
-def evaluate_all(m, ranges):
-    return {k: evaluate(m[k], ranges[k][0], ranges[k][1], META[k]["tol"]) for k in ORDER}
+# Angles qui n'ont de sens que si la jambe mesurée est au point mort bas (manivelle à 6 h).
+BDC_KEYS = ("knee", "hip", "ankle")
+
+
+def evaluate_all(m, ranges, na=()):
+    """Évalue chaque angle. Les angles listés dans `na` sont marqués « non mesurables » et sortent du score."""
+    ev = {k: evaluate(m[k], ranges[k][0], ranges[k][1], META[k]["tol"]) for k in ORDER}
+    for k in na:
+        ev[k] = {"status": "na", "score": 0.0, "dist": 0.0, "dir": "in"}
+    return ev
 
 
 def global_score(ev):
-    return sum(META[k]["w"] * ev[k]["score"] for k in ORDER) / sum(META[k]["w"] for k in ORDER)
+    """Moyenne pondérée des angles évalués (les angles « non mesurables » ne comptent pas)."""
+    keys = [k for k in ORDER if ev[k]["status"] != "na"]
+    if not keys:
+        return 0.0
+    return sum(META[k]["w"] * ev[k]["score"] for k in keys) / sum(META[k]["w"] for k in keys)
+
+
+def crank_check(lms, side, w, h):
+    """La jambe mesurée est-elle au point mort bas (manivelle à 6 h) ?
+
+    Retourne dict(state, phase, knee, method, msg) avec state = "ok", "uncertain" ou "off".
+    Deux indices sont croisés : l'extension du genou, et la position relative des deux chevilles
+    (à 6 h, la cheville mesurée est à la verticale sous l'autre ; à 3 h ou 9 h, elles sont à la même hauteur)."""
+    pts, vis = side_points(lms, side, w, h)
+    other = "Gauche" if side == "Droit" else "Droit"
+    opts, ovis = side_points(lms, other, w, h)
+    knee = angle_3pts(pts["hip"], pts["knee"], pts["ankle"])
+    shank = max(1.0, math.dist(pts["knee"], pts["ankle"]))
+    dx, dy = pts["ankle"][0] - opts["ankle"][0], pts["ankle"][1] - opts["ankle"][1]
+    sep = math.hypot(dx, dy) / shank
+    phase = None
+    if ovis["ankle"] >= 0.6 and vis["ankle"] >= 0.6 and 0.45 <= sep <= 1.3:
+        phase = math.degrees(math.atan2(abs(dx), dy))          # 0° = jambe mesurée en bas, 90° = manivelles horizontales, 180° = en haut
+    fwd = 1.0 if is_facing_right(lms, side) else -1.0
+    tilt = math.degrees(math.atan2((pts["ankle"][0] - pts["hip"][0]) * fwd, max(1.0, pts["ankle"][1] - pts["hip"][1])))   # > 0 : cheville en avant de la hanche
+
+    def out(state, method, msg):
+        return dict(state=state, phase=phase, knee=knee, tilt=tilt, method=method, msg=msg)
+
+    if knee >= 138:
+        return out("ok", "genou", "Jambe presque tendue : la manivelle est bien proche du point mort bas (6 h).")
+    if knee < 112:
+        return out("off", "genou", f"Le genou est plié à {knee:.0f}° : la manivelle n'est pas au point mort bas (6 h).")
+    if phase is not None:
+        if phase <= 25:
+            return out("ok", "chevilles", "Les deux pieds sont l'un au-dessus de l'autre : la manivelle est proche du point mort bas (6 h).")
+        return out("off", "chevilles", f"La manivelle est à environ {phase:.0f}° du point mort bas (genou à {knee:.0f}°).")
+    if tilt > 18 or tilt < -4 or knee < 118:
+        return out("off", "jambe", f"Le genou est plié à {knee:.0f}° et la jambe n'est pas à la verticale : la manivelle ne semble pas au point mort bas (6 h).")
+    return out("uncertain", "jambe", f"Genou à {knee:.0f}° : impossible de confirmer que la manivelle est bien à 6 h. "
+                                     "Si elle l'est, la selle est nettement trop basse ; sinon, reprenez la photo.")
+
+
+def aero_posture(m):
+    """Vrai si la posture mesurée est celle d'un vélo de contre-la-montre (avant-bras posés, dos très bas)."""
+    return m["elbow"] <= 125 and m["torso"] <= 30
+
+
+def reliability(quality, crank=None):
+    """Niveau de confiance global d'une analyse photo : ("ok" | "warn" | "bad", libellé)."""
+    if (crank and crank["state"] == "off") or quality < 45:
+        return "bad", "Mesure non fiable"
+    if (crank and crank["state"] == "uncertain") or quality < 70:
+        return "warn", "Mesure approximative"
+    return "ok", "Mesure fiable"
 
 
 def verdict_for(score):
@@ -388,7 +451,7 @@ def leg_tilt_deg(pts):
     return math.degrees(math.atan2(abs(ax - hx), max(1.0, ay - hy)))
 
 
-def assess_quality(lms, vis, pts, w, h, image=None):
+def assess_quality(lms, vis, pts, w, h, image=None, crank=None):
     """Évalue la qualité de la prise de vue : visibilité, profil, cadrage, taille du sujet, lumière."""
     notes = []
     score = float(np.mean(list(vis.values()))) * 100
@@ -402,7 +465,14 @@ def assess_quality(lms, vis, pts, w, h, image=None):
         score -= 8
         notes.append(("warn", "Repères peu visibles (" + ", ".join(low) + ") : vérifiez l'éclairage, les vêtements contrastés et le cadrage."))
     tilt = leg_tilt_deg(pts)
-    if tilt > 32:
+    if crank is not None:
+        if crank["state"] == "off":
+            score -= 30
+            notes.append(("bad", crank["msg"] + " Le genou, la hanche et la cheville ne peuvent pas être jugés sur cette image."))
+        elif crank["state"] == "uncertain":
+            score -= 12
+            notes.append(("warn", crank["msg"]))
+    elif tilt > 32:
         score -= 10
         notes.append(("bad", "La jambe semble très inclinée : la manivelle n'est probablement pas au point mort bas (6 h)."))
     mx, my = 0.02 * w, 0.02 * h
@@ -843,6 +913,12 @@ def build_recommendations(m, ev, ranges, ctx):
             ["Allonger la potence de 10 mm ou relever légèrement le cintre."])
     else:
         add("elbow", "ok", "Flexion de coude idéale", f"Angle de <b>{m['elbow']:.0f}°</b> dans la cible {lo}–{hi}° : bonne absorption des chocs.")
+    for r in recs:
+        if ev[r["key"]]["status"] == "na":
+            r.update(status="na", title=f"{META[r['key']]['short']} : non mesurable sur cette photo",
+                     diag="Cet angle ne se juge que lorsque la jambe est en bas (manivelle à 6 h). Sur cette image, la manivelle est ailleurs : "
+                          "la valeur mesurée ne dit rien de votre réglage.",
+                     actions=["Reprendre une photo de profil avec la manivelle à 6 h (pédale au plus bas, côté appareil), ou filmer 10 à 15 s de pédalage."])
     return recs
 
 
@@ -1337,8 +1413,11 @@ def png_bytes(rgb):
     return buf.tobytes() if ok else b""
 
 
-def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, studio="", client="", logo_bytes=None, extras=None):
+def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, studio="", client="", logo_bytes=None, extras=None, notice=""):
+    """notice : avertissement de fiabilité (ex. manivelle pas à 6 h) repris en tête de tous les rapports."""
     title, sub = verdict_for(score)
+    if any(ev[k]["status"] == "na" for k in ORDER):
+        title, sub = "Score partiel", "Calculé sur les seuls angles mesurables de cette photo. Reprenez une photo manivelle à 6 h pour un score complet."
     rows = []
     for k in ORDER:
         rows.append(dict(label=META[k]["label"], value=f"{m[k]:.1f}°", target=f"{ranges[k][0]}–{ranges[k][1]}°",
@@ -1346,12 +1425,12 @@ def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, stu
                          lo=float(ranges[k][0]), hi=float(ranges[k][1]), vmin=float(META[k]["vmin"]), vmax=float(META[k]["vmax"]),
                          st=ev[k]["status"]))
     todo = [dict(title=r["title"], diag=_plain(r["diag"]), actions=[_plain(a) for a in r["actions"]])
-            for r in recs if r["status"] != "ok"]
+            for r in recs if r["status"] in ("warn", "bad")]
     return dict(
         studio=studio or "VeloFit AI Studio", client=client or "Cycliste", date=datetime.now().strftime("%d/%m/%Y"),
         discipline=ctx["discipline"], goal=ctx["goal"], flex=ctx["flex"], height=ctx["height"], weight=int(ctx.get("weight") or 0),
         score=float(score), verdict=title, verdict_sub=sub, quality=float(quality), rows=rows, todo=todo,
-        image_png=png_bytes(annotated_rgb), logo=logo_bytes, extras=[(t, _plain(x)) for t, x in (extras or [])],
+        image_png=png_bytes(annotated_rgb), logo=logo_bytes, extras=[(t, _plain(x)) for t, x in (extras or [])], notice=_plain(notice or ""),
         disclaimer="Outil indicatif : ne remplace pas l'avis d'un professionnel du bike-fitting ni d'un professionnel de santé en cas de douleur persistante.",
     )
 
@@ -1360,6 +1439,7 @@ def report_markdown(r):
     lines = [f"# Rapport {r['studio']}", "", f"*{r['client']} — {r['date']}*", "",
              f"**Discipline :** {r['discipline']} · **Objectif :** {r['goal']} · **Souplesse :** {r['flex']} · **Taille :** {r['height']} cm" + (f" · **Poids :** {r['weight']} kg" if r.get("weight") else "") + "  ",
              f"**Score postural :** {r['score']:.0f}/100 ({r['verdict']}) · **Qualité de la prise de vue :** {r['quality']:.0f}/100", "",
+             *([f"> **Attention :** {r['notice']}", ""] if r.get("notice") else []),
              "## Mesures", "", "| Mesure | Valeur | Cible | Statut |", "|---|---|---|---|"]
     for row in r["rows"]:
         lines.append(f"| {row['label']} | {row['value']} | {row['target']} | {row['status']} |")
@@ -1404,6 +1484,7 @@ li{{margin-bottom:8px}} .note{{font-size:.8rem;color:#64748b;border-top:1px soli
 <section><div class="score"><div class="ring">{r['score']:.0f}</div>
 <div><h2 style="margin:0">{e(r['verdict'])}</h2><p>{e(r['verdict_sub'])}</p>
 <p style="color:#64748b">{e(r['discipline'])} · objectif {e(r['goal'])} · souplesse {e(r['flex'])} · {r['height']} cm{(' · ' + str(r['weight']) + ' kg') if r.get('weight') else ''} · qualité photo {r['quality']:.0f}/100</p></div></div>
+{('<p style="border:2px solid #fb7185;background:#fff1f2;border-radius:10px;padding:12px 14px"><b>Attention :</b> ' + e(r['notice']) + '</p>') if r.get('notice') else ''}
 {('<img class="main" src="data:image/png;base64,' + img + '">') if img else ''}
 <h2>Mesures</h2><table><tr><th>Mesure</th><th>Valeur</th><th>Cible</th><th>Statut</th></tr>{rows}</table>
 <h2>Plan d'action</h2><ol>{todo}</ol>{extras}
@@ -1713,12 +1794,21 @@ def _report_pdf_reportlab(r):
     infot.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                                ("LEFTPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     E += [infot, Spacer(1, 10)]
+    if r.get("notice"):
+        nt = Table([[Paragraph(f"<b>Attention :</b> {T(r['notice'])}", S["p"])]], colWidths=[CW])
+        nt.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 1.2, colors.HexColor("#fb7185")), ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fff1f2")),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 9), ("RIGHTPADDING", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
+        E += [nt, Spacer(1, 6)]
 
     good = [x["label"] for x in r["rows"] if x.get("st", "ok") == "ok"]
-    watch = [x for x in r["rows"] if x.get("st", "ok") != "ok"]
+    watch = [x for x in r["rows"] if x.get("st", "ok") in ("warn", "bad")]
+    skipped = [x["label"] for x in r["rows"] if x.get("st") == "na"]
     left_col = [Paragraph("Points solides", S["h3"])] + ([Paragraph(T(g), S["li"], bulletText="•") for g in good] or [Paragraph("Aucun angle dans la cible pour l'instant.", S["mut"])])
     right_col = [Paragraph("À travailler en priorité", S["h3"])] + (
-        [Paragraph(f"{T(x['label'])} : {T(x['value'])} (cible {T(x['target'])})", S["li"], bulletText="•") for x in watch] or [Paragraph("Rien à corriger : conservez votre réglage.", S["mut"])])
+        [Paragraph(f"{T(x['label'])} : {T(x['value'])} (cible {T(x['target'])})", S["li"], bulletText="•") for x in watch]
+        or [Paragraph("Rien à corriger sur les angles mesurés." if skipped else "Rien à corriger : conservez votre réglage.", S["mut"])])
+    if skipped:
+        right_col += [Paragraph("Non mesurables sur cette photo", S["h3"])] + [Paragraph(T(g), S["li"], bulletText="•") for g in skipped]
     two = Table([[left_col, right_col]], colWidths=[CW / 2, CW / 2])
     two.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEAFTER", (0, 0), (0, 0), 0.6, LINE), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("LEFTPADDING", (1, 0), (1, 0), 14)]))
     E += [Paragraph("Synthèse", S["h2"]), two]

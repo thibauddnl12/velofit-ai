@@ -332,12 +332,16 @@ def insight(rec):
     card(rec["status"], rec["title"], rec["diag"], rec["actions"], why=rec.get("why"))
 
 
-def score_ring(score):
+def score_ring(score, partial=False):
     color = ui_kit.OK if score >= 80 else (ui_kit.WARN if score >= 60 else ui_kit.BAD)
     title, sub = core.verdict_for(score)
+    if partial:
+        color = ui_kit.MUT
+        title, sub = "Score partiel", ("Calculé sur le haut du corps seulement (tronc, épaule, coude). Le genou, la hanche et la cheville "
+                                       "ne sont pas jugés : reprenez une photo manivelle à 6 h pour un score complet.")
     H(f"""
     <div class="glass"><div class="score-wrap">
-      <div class="ring" style="--p:{score:.0f};--c:{color}"><div class="ring-in"><div><div class="ring-val">{score:.0f}</div><div class="ring-sub">/ 100</div></div></div></div>
+      <div class="ring" style="--p:{score:.0f};--c:{color}"><div class="ring-in"><div><div class="ring-val">{score:.0f}</div><div class="ring-sub">{"partiel" if partial else "/ 100"}</div></div></div></div>
       <div class="verdict"><h3>{title}</h3><p>{sub}</p></div>
     </div></div>""")
 
@@ -475,7 +479,7 @@ def history_section(name, current=None, kp=""):
         stretch(st.plotly_chart, line_fig(dates, [("Score", scores, "#c6f432")], target=tgt, ytitle="Score /100"))
     rows = []
     for e in hist:
-        r = {"Analyse": e.get("label", ""), "Date": e["date"][:16].replace("T", " "), "Source": e.get("source", ""), "Score": e["score"], "Réglage": e.get("note", "")}
+        r = {"Analyse": e.get("label", "") + (" (score partiel)" if e.get("partial") else ""), "Date": e["date"][:16].replace("T", " "), "Source": e.get("source", ""), "Score": e["score"], "Réglage": e.get("note", "")}
         for k in ORDER:
             r[META[k]["short"]] = e["m"].get(k)
         if e.get("avg_power"):
@@ -640,11 +644,11 @@ if IS_ADMIN:
 with t_main:
     step_box = st.empty()
 
-    def show_steps(has_file, score=None):
+    def show_steps(has_file, score=None, partial=False):
         step_box.markdown(ui_kit.stepper([
             ("Votre profil", profile_text(), "done"),
             ("Photo ou vidéo", "Importée" if has_file else "À importer ci-dessous", "done" if has_file else "now"),
-            ("Résultats", f"Score {score:.0f}/100" if score is not None else "Score, réglages, vélo 3D", "now" if score is not None else "todo"),
+            ("Résultats", f"Score{' partiel' if partial else ''} {score:.0f}/100" if score is not None else "Score, réglages, vélo 3D", "now" if score is not None else "todo"),
         ]), unsafe_allow_html=True)
 
     section("Étape 2 · Votre photo ou vidéo de profil", "Choisissez la source, puis importez le fichier. L'analyse démarre toute seule.", first=True)
@@ -730,7 +734,10 @@ with t_main:
     m = A.get("m") or core.compute_metrics(pts)
     if A["video"] is None:
         m = core.compute_metrics(pts)
-    ev = core.evaluate_all(m, ranges)
+    # --- la jambe est-elle au point mort bas ? Sinon genou, hanche et cheville ne sont pas jugés (une vidéo choisit elle-même le bon instant)
+    crank = core.crank_check(A["lms"], A["side"], iw, ih) if A["video"] is None else None
+    na_keys = core.BDC_KEYS if (crank and crank["state"] == "off") else ()
+    ev = core.evaluate_all(m, ranges, na_keys)
     scores = {k: ev[k]["score"] for k in ORDER}
     gscore = core.global_score(ev)
 
@@ -754,17 +761,50 @@ with t_main:
         cal_info += " Les segments mesurés semblent incohérents avec votre taille : le modèle anthropométrique est utilisé à la place (placez les points plus précisément)."
     ctx["seg"] = seg
 
-    quality, qnotes, leg_tilt = core.assess_quality(A["lms"], vis, pts, iw, ih, img)
+    quality, qnotes, leg_tilt = core.assess_quality(A["lms"], vis, pts, iw, ih, img, crank=crank)
+    rel_lvl, rel_txt = core.reliability(quality, crank)
+    is_tt = ss["discipline"].startswith("Triathlon")
+    aero = core.aero_posture(m)
     recs = core.build_recommendations(m, ev, ranges, ctx)
     annotated = core.annotate(img, pts, m, ev, grid=ss["show_grid"])
     extras = []
     kops_for_bike = None
     ss["_analysis"] = True
-    show_steps(True, gscore)
+    show_steps(True, gscore, partial=bool(na_keys))
 
     n_bad = sum(1 for r in recs if r["status"] == "bad")
     n_warn = sum(1 for r in recs if r["status"] == "warn")
     section("Étape 3 · Vos résultats", "Commencez par le résumé ; les autres rubriques détaillent chaque réglage, sans obligation de tout lire.")
+    notice = ""
+    if rel_lvl != "ok":
+        reasons = [txt for lvl, txt in qnotes if lvl in ("bad", "warn")]
+        if na_keys:
+            notice = ("La manivelle n'est pas au point mort bas (6 h) sur cette photo : le genou, la hanche et la cheville ne sont pas évalués "
+                      "et le score est partiel. Reprenez une photo de profil, pédale au plus bas.")
+            H(ui_kit.banner("bad", "Photo à reprendre : la manivelle n'est pas à 6 h",
+                            "Le genou, la hanche et la cheville ne se jugent que jambe en bas. Sur cette image ils ne sont <b>pas évalués</b> : "
+                            "le score affiché est partiel (haut du corps seulement) et ne reflète pas la qualité réelle de la position.",
+                            reasons, "Reprenez une photo de profil avec la pédale du côté de l'appareil au plus bas (6 h), ou filmez 10 à 15 s de pédalage : "
+                                     "la vidéo choisit toute seule le bon instant."))
+        elif rel_lvl == "bad":
+            notice = "Prise de vue de qualité insuffisante : les mesures et le score de ce rapport sont peu fiables. Reprenez la photo."
+            H(ui_kit.banner("bad", "Photo à reprendre : la mesure n'est pas fiable",
+                            f"Qualité de la prise de vue : <b>{quality:.0f}/100</b>. Le score et les réglages proposés peuvent être faux.",
+                            reasons, "Reprenez la photo : profil strict à 90° du vélo, corps entier dans le cadre, bonne lumière, manivelle à 6 h."))
+        else:
+            notice = "Prise de vue imparfaite : les mesures de ce rapport sont approximatives (quelques degrés d'écart possibles)."
+            H(ui_kit.banner("warn", "Mesure approximative : prise de vue à améliorer",
+                            f"Qualité de la prise de vue : <b>{quality:.0f}/100</b>. Les angles peuvent être décalés de quelques degrés : "
+                            "confirmez avec une meilleure photo avant de modifier votre vélo.",
+                            reasons, "Pour une mesure fiable : profil strict à 90° du vélo, corps entier dans le cadre, bonne lumière, manivelle à 6 h."))
+    if aero and not is_tt:
+        H(ui_kit.banner("warn", "Position de contre-la-montre détectée, mais le profil indique « " + _html.escape(ss["discipline"]) + " »",
+                        "Avant-bras posés et dos très bas : cette posture est jugée ici avec les cibles d'un autre type de vélo, ce qui fausse le score.",
+                        [], f"Choisissez « Triathlon / CLM » dans l'onglet « {PROFILE_TAB} », puis revenez : l'analyse est recalculée aussitôt."))
+    elif is_tt and not aero and m["elbow"] >= 140 and m["torso"] >= 32:
+        H(ui_kit.banner("warn", "Le profil indique « Triathlon / CLM », mais la posture n'est pas celle d'un contre-la-montre",
+                        "Bras presque tendus et dos relevé : cette posture est jugée avec les cibles très basses du contre-la-montre, ce qui fausse le score.",
+                        [], f"Si ce vélo n'a pas de prolongateurs, choisissez le bon type de vélo dans l'onglet « {PROFILE_TAB} »."))
     r_sum, r_bike, r_more, r_tools, r_follow, r_rep = st.tabs(
         ["Résumé", "Réglages du vélo", "Analyses complémentaires", "Simulateur & transfert", "Enregistrer & comparer", "Rapport"])
 
@@ -772,7 +812,7 @@ with t_main:
     with r_sum:
         col_a, col_b = st.columns([0.95, 1.05], gap="large")
         with col_a:
-            score_ring(gscore)
+            score_ring(gscore, partial=bool(na_keys))
             qcol = ui_kit.OK if quality >= 75 else (ui_kit.WARN if quality >= 55 else ui_kit.BAD)
             chips = []
             if n_bad:
@@ -780,10 +820,12 @@ with t_main:
             if n_warn:
                 chips.append(f'<span class="chip" style="--c:{ui_kit.WARN}">{n_warn} à surveiller</span>')
             if not n_bad and not n_warn:
-                chips.append(f'<span class="chip" style="--c:{ui_kit.OK}">Tous les angles dans la cible</span>')
-            chips.append(f'<span class="chip" style="--c:{qcol}">Qualité de la prise de vue : {quality:.0f}/100</span>')
+                chips.append(f'<span class="chip" style="--c:{ui_kit.OK}">{"Angles mesurés dans la cible" if na_keys else "Tous les angles dans la cible"}</span>')
+            if na_keys:
+                chips.append(f'<span class="chip" style="--c:{ui_kit.MUT}">{len(na_keys)} non mesurables</span>')
+            chips.append(f'<span class="chip" style="--c:{ui_kit.BAD if rel_lvl == "bad" else (ui_kit.WARN if rel_lvl == "warn" else ui_kit.OK)}">{rel_txt} · prise de vue {quality:.0f}/100</span>')
             H('<div class="sum-chips">' + "".join(chips) + "</div>")
-            st.caption(f"Score sur 100 : moyenne pondérée de six angles, comparés aux plages visées pour « {ss['discipline']} », objectif {ss['goal'].lower()}, "
+            st.caption(f"Score sur 100 : moyenne pondérée {'des angles mesurables' if na_keys else 'de six angles'}, comparés aux plages visées pour « {ss['discipline']} », objectif {ss['goal'].lower()}, "
                        f"souplesse {ctx_flex.lower()}.")
         with col_b:
             stretch(st.image, annotated, caption=f"Côté analysé : {A['side']} · {ss['discipline']} · source : {A['source']}")
@@ -803,6 +845,8 @@ with t_main:
         with a:
             st.markdown("##### Profil postural")
             stretch(st.plotly_chart, radar(scores))
+            if na_keys:
+                st.caption("Genou, hanche et cheville apparaissent à zéro sur ce graphique : ils ne sont pas mesurables sur cette photo.")
         with b:
             st.markdown("##### Fiabilité de la mesure")
             for lvl, txt in qnotes:
@@ -1027,7 +1071,10 @@ with t_main:
             new["knee"] = core.knee_after_delta(m["knee"], d_sel, seg)
             new["torso"] = core.torso_after_bar_delta(m["torso"], d_bar, ctx["height"])
             new["hip"] = m["hip"] + (new["torso"] - m["torso"])
-            ev_new = core.evaluate_all(new, ranges)
+            ev_new = core.evaluate_all(new, ranges, na_keys)
+            if na_keys:
+                st.warning("La manivelle n'est pas à 6 h sur cette photo : l'effet de la hauteur de selle sur le genou ne peut pas être simulé de façon fiable. "
+                           "Seul l'effet de la hauteur du cintre sur le tronc est pris en compte dans le score.")
             score_new = core.global_score(ev_new)
             x1, x2, x3 = st.columns(3)
             x1.metric("Score postural", f"{score_new:.0f}/100", f"{score_new - gscore:+.0f}")
@@ -1062,8 +1109,11 @@ with t_main:
     # ==================================================================== SUIVI
     with r_follow:
         section(f"Enregistrer cette analyse — {active}", "Donnez-lui un nom pour la retrouver et comparer l'avant / après de vos réglages.", first=True)
+        if rel_lvl == "bad":
+            st.warning("Cette analyse n'est pas fiable (voir l'avertissement en haut des résultats) : mieux vaut reprendre la photo avant de l'enregistrer dans votre suivi.")
         cur_dict = dict(m=m, score=gscore, annotated=annotated, source=A["source"], quality=quality, ev=ev,
-                        extra=dict(cadence=round(A["video"]["cadence"], 1), rom=round(A["video"]["rom"], 1)) if A["video"] and not np.isnan(A["video"]["rom"]) else {})
+                        extra={**(dict(cadence=round(A["video"]["cadence"], 1), rom=round(A["video"]["rom"], 1)) if A["video"] and not np.isnan(A["video"]["rom"]) else {}),
+                               **({"partial": True} if na_keys else {})})
         history_section(active, cur_dict, kp="an_")
 
     # ==================================================================== RAPPORT
@@ -1074,7 +1124,7 @@ with t_main:
         client_name = r2.text_input("Nom du cycliste", value=active if active != "Invité" else "", key="rep_client")
         logo_file = st.file_uploader("Logo (optionnel)", type=["png", "jpg", "jpeg"], key="rep_logo")
         logo_bytes = logo_file.getvalue() if logo_file is not None else (ss["logo_png"] if fitter else None)
-        rep = core.assemble_report(ctx, m, ev, ranges, gscore, recs, quality, annotated, studio=studio_name, client=client_name, logo_bytes=logo_bytes, extras=extras)
+        rep = core.assemble_report(ctx, m, ev, ranges, gscore, recs, quality, annotated, studio=studio_name, client=client_name, logo_bytes=logo_bytes, extras=extras, notice=notice)
         b1, b2, b3 = st.columns(3)
         if b1.button("Générer le PDF", key="mk_pdf", type="primary"):
             with st.spinner("Création du PDF…"):
@@ -1094,7 +1144,10 @@ with t_main:
     adjustments = core.bike_adjustments(m, ev, ranges, ctx, kops_for_bike)
     with next_box:
         first_adj = next((a for a in adjustments if a["status"] in ("bad", "warn")), None)
-        if first_adj:
+        if rel_lvl == "bad":
+            H(ui_kit.cta("Par où commencer : reprendre la photo", "Cette image ne permet pas une mesure fiable. Ne modifiez pas votre vélo sur la base de ces résultats : "
+                                                                  "reprenez d'abord une photo de profil, manivelle à 6 h, ou une courte vidéo."))
+        elif first_adj:
             H(ui_kit.cta(f"Par où commencer : {first_adj['title'][0].lower() + first_adj['title'][1:]}",
                          " · ".join(_html.escape(x) for x in first_adj["reasons"])
                          + ". Faites ce réglage seul, roulez, puis reprenez une photo pour vérifier avant de passer au suivant."))
