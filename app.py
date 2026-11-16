@@ -806,7 +806,9 @@ with t_main:
 
     quality, qnotes, leg_tilt = core.assess_quality(A["lms"], vis, pts, iw, ih, img, crank=crank)
     rel_lvl, rel_txt = core.reliability(quality, crank)
-    aero = core.aero_posture(m)
+    arm = core.aero_details(pts, core.is_facing_right(A["lms"], A["side"]))
+    aero = core.aero_posture(m, arm["forearm_tilt"])            # avant-bras à l'horizontale : appui probable sur des prolongateurs
+    tuck = core.tuck_posture(m, arm["forearm_tilt"])            # coudes très fléchis, mains plus basses : position de vitesse sur cintre classique
     recs = core.build_recommendations(m, ev, ranges, ctx)
     annotated = core.annotate(img, pts, m, ev, grid=ss["show_grid"])
     extras = []
@@ -840,9 +842,17 @@ with t_main:
                             "confirmez avec une meilleure photo avant de modifier votre vélo.",
                             reasons, "Pour une mesure fiable : profil strict à 90° du vélo, corps entier dans le cadre, bonne lumière, manivelle à 6 h."))
     if aero and not is_tt:
-        H(ui_kit.banner("warn", "Position de contre-la-montre détectée, mais le profil indique « " + _html.escape(ss["discipline"]) + " »",
-                        "Avant-bras posés et dos très bas : cette posture est jugée ici avec les cibles d'un autre type de vélo, ce qui fausse le score.",
-                        [], f"Choisissez « Contre-la-montre » ou « Triathlon » dans l'onglet « {PROFILE_TAB} », puis revenez : l'analyse est recalculée aussitôt."))
+        H(ui_kit.banner("warn", "Ce vélo a-t-il des prolongateurs ?",
+                        "Le dos est très bas et les avant-bras sont à l'horizontale, comme sur un vélo de contre-la-montre ou de triathlon, "
+                        "alors que le profil indique « " + _html.escape(ss["discipline"]) + " ». Si le vélo n'a pas de prolongateurs, ignorez ce message.",
+                        [], f"S'il en a : choisissez « Contre-la-montre » ou « Triathlon » dans l'onglet « {PROFILE_TAB} ». "
+                            "Sinon : pour régler un vélo de route, prenez plutôt la photo dans votre position habituelle, mains sur les cocottes."))
+    elif tuck and not is_tt:
+        H(ui_kit.banner("warn", "Position de recherche de vitesse : le score sous-estime ce réglage",
+                        "Dos très bas et coudes très fléchis : c'est une position que l'on tient quelques minutes pour aller vite, pas la position de base du vélo. "
+                        "Le tronc et les coudes sortent donc des cibles d'une position tenue des heures, ce qui fait baisser le score sans que le réglage soit en cause.",
+                        [], "Pour juger le réglage du vélo, reprenez la photo dans votre position habituelle : mains sur les cocottes, bras souples. "
+                            "Le genou, lui, reste valable sur cette image."))
     elif is_tt and not aero and m["elbow"] >= 140 and m["torso"] >= 32:
         H(ui_kit.banner("bad", "Photo à reprendre : le cycliste n'est pas sur les prolongateurs",
                         "Sur un vélo de contre-la-montre ou de triathlon, la position se mesure <b>avant-bras posés sur les accoudoirs, mains sur les prolongateurs</b>. "

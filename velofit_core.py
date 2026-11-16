@@ -535,9 +535,17 @@ def crank_check(lms, side, w, h):
                                      "Si elle l'est, la selle est nettement trop basse ; sinon, reprenez la photo.")
 
 
-def aero_posture(m):
-    """Vrai si la posture mesurée est celle d'un vélo de contre-la-montre (avant-bras posés, dos très bas)."""
-    return m["elbow"] <= 125 and m["torso"] <= 30
+def aero_posture(m, forearm_tilt=None):
+    """Vrai si la posture ressemble à celle d'un vélo à prolongateurs : dos très bas, coudes fléchis ET avant-bras à peu près horizontaux
+    (posés sur des accoudoirs). Sur un vélo de route en position de vitesse, les coudes sont fléchis aussi, mais les avant-bras
+    plongent vers les cocottes : forearm_tilt (voir aero_details) sert à faire la différence."""
+    low = m["elbow"] <= 125 and m["torso"] <= 30
+    return low and (forearm_tilt is None or forearm_tilt >= -12)
+
+
+def tuck_posture(m, forearm_tilt):
+    """Vrai pour une position de recherche de vitesse sur un cintre classique : dos très bas, coudes très fléchis, avant-bras qui plongent vers les mains."""
+    return m["elbow"] <= 125 and m["torso"] <= 30 and forearm_tilt < -12
 
 
 def reliability(quality, crank=None):
