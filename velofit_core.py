@@ -41,22 +41,95 @@ STATUS = {
 FLEX_SHIFT = {"Limitée": 5, "Moyenne": 0, "Très souple": -4}
 GOAL_SHIFT = {"Confort": 4, "Équilibré": 0, "Performance": -4}
 
-# Plages cibles (min, max) en degrés — indicatives, issues des pratiques courantes de bike-fitting.
+# ------------------------------------------------------------------------------
+#  CIBLES : d'où viennent les chiffres
+# ------------------------------------------------------------------------------
+# Les plages ci-dessous valent pour une PHOTO POSÉE (cycliste à l'arrêt, pédale en bas), comme une mesure au goniomètre.
+# Pour une image prise EN PÉDALANT (vidéo, photo en roulant), DYNAMIC_SHIFT décale les cibles (voir REFERENCES).
+# « étude » = valeur publiée ; « pratique » = repère usuel des bike-fitters, sans norme publiée pour cette mesure.
+AERO_DISCIPLINES = ("Contre-la-montre (prolongateurs)", "Triathlon (prolongateurs)")
+DISCIPLINE_ALIASES = {"Triathlon / CLM": "Triathlon (prolongateurs)"}       # ancien nom, encore présent dans des profils enregistrés
+DEFAULT_DISCIPLINE = "Route / Endurance"
+
 BASE_RANGES = {
-    "Route / Endurance": dict(knee=(145, 155), torso=(42, 55), hip=(112, 135), shoulder=(80, 100), elbow=(150, 170), ankle=(95, 120)),
-    "Compétition / Course": dict(knee=(142, 152), torso=(28, 42), hip=(95, 115), shoulder=(75, 95), elbow=(140, 165), ankle=(95, 120)),
-    "Gravel": dict(knee=(143, 153), torso=(40, 52), hip=(105, 128), shoulder=(80, 100), elbow=(150, 168), ankle=(95, 120)),
-    "VTT / XC": dict(knee=(145, 155), torso=(38, 50), hip=(105, 128), shoulder=(78, 98), elbow=(145, 168), ankle=(95, 120)),
-    "Triathlon / CLM": dict(knee=(143, 153), torso=(8, 22), hip=(80, 105), shoulder=(85, 110), elbow=(80, 110), ankle=(95, 120)),
+    "Route / Endurance": dict(knee=(145, 155), torso=(40, 55), hip=(105, 128), shoulder=(80, 100), elbow=(150, 165), ankle=(95, 120)),
+    "Compétition / Course": dict(knee=(145, 155), torso=(30, 45), hip=(95, 115), shoulder=(78, 98), elbow=(145, 162), ankle=(95, 120)),
+    "Gravel": dict(knee=(145, 155), torso=(40, 55), hip=(105, 128), shoulder=(80, 100), elbow=(148, 165), ankle=(95, 120)),
+    "VTT / XC": dict(knee=(145, 155), torso=(40, 55), hip=(105, 128), shoulder=(78, 98), elbow=(140, 165), ankle=(95, 120)),
+    "Contre-la-montre (prolongateurs)": dict(knee=(145, 155), torso=(5, 20), hip=(95, 105), shoulder=(78, 95), elbow=(85, 110), ankle=(95, 120)),
+    "Triathlon (prolongateurs)": dict(knee=(145, 155), torso=(10, 25), hip=(95, 105), shoulder=(78, 95), elbow=(85, 110), ankle=(95, 120)),
 }
 
+# Écart entre une mesure posée et une mesure en pédalant, à 6 h (Bini & Hume 2016 : genou 8,2° de flexion en plus en dynamique,
+# cheville 8,2°, hanche 4,9°). Les plages publiées diffèrent de 5° : 25–35° de flexion en statique, 30–40° en dynamique.
+DYNAMIC_SHIFT = dict(knee=-5, hip=-5, ankle=5)
+
+REFERENCES = {
+    "holmes": dict(cite="Holmes J.C., Pruitt A.L., Whalen N.J. (1994). Lower extremity overuse in bicycling. Clinics in Sports Medicine, 13(1), 187–205 "
+                        "(plage de 25–35° de flexion du genou, rappelée par Holliday & Swart 2021).", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC9219349"),
+    "bini2011": dict(cite="Bini R., Hume P.A., Croft J.L. (2011). Effects of bicycle saddle height on knee injury risk and cycling performance. Sports Medicine, 41(6), 463–476.",
+                     url="https://read.qxmd.com/read/21615188/effects-of-bicycle-saddle-height-on-knee-injury-risk-and-cycling-performance"),
+    "ferrer2012": dict(cite="Ferrer-Roca V., Roig A., Galilea P., García-López J. (2012). Influence of saddle height on lower limb kinematics in well-trained cyclists: "
+                            "static vs. dynamic evaluation in bike fitting. Journal of Strength and Conditioning Research, 26(11), 3025–3029.",
+                       url="https://lida.sport-iat.de/bdr/Record/4026751?lng=en"),
+    "bini2016": dict(cite="Bini R.R., Hume P. (2016). A comparison of static and dynamic measures of lower limb joint angles in cycling: application to bicycle fitting. "
+                          "Human Movement, 17(1), 36–42.", url="https://hummov.awf.wroc.pl/A-comparison-of-static-and-dynamic-measures-of-lower-limb-joint-angles-in-cycling,183244,0,2.html"),
+    "holliday2021": dict(cite="Holliday W., Swart J. (2021). Anthropometrics, flexibility and training history as determinants for bicycle configuration. "
+                              "Sports Medicine and Health Science, 3(2), 93–100 (reprend aussi les repères de Burt et de Pruitt & Matheny pour le tronc et le coude).",
+                         url="https://pmc.ncbi.nlm.nih.gov/articles/PMC9219349"),
+    "fintelman2014": dict(cite="Fintelman D.M., Sterling M., Hemida H., Li F.X. (2014). Optimal cycling time trial position models: aerodynamics versus power output "
+                               "and metabolic energy. Journal of Biomechanics, 47(8), 1894–1898.",
+                          url="https://research.birmingham.ac.uk/en/publications/optimal-cycling-time-trial-position-models-aerodynamics-versus-po"),
+    "fist": dict(cite="Empfield D. Méthode F.I.S.T. : angle de hanche de 95 à 105° sur vélo de triathlon (hanche – épaule – boîtier de pédalier). Slowtwitch.",
+                 url="https://www.slowtwitch.com/industry/hip-angle/"),
+    "bikefit": dict(cite="BikeFit (2015). How to fit a triathlon or TT bike, part 3 : upper body positioning (angle d'épaule d'environ 90°, 80° selon F.I.S.T.).",
+                    url="https://bikefit.com/blogs/bikefit-blog/how-to-fit-a-triathlon-or-tt-bike-part-3-upper-body-positioning"),
+    "bini2023": dict(cite="Bini R.R. et al. (2023). Criterion validity of neural networks to assess lower limb motion during cycling. Journal of Sports Sciences, 41(1), 36–44.",
+                     url="https://informahealthcare.com/doi/full/10.1080/02640414.2023.2194725"),
+}
+
+
+def is_aero(discipline):
+    """Vrai pour les vélos à prolongateurs (contre-la-montre, triathlon)."""
+    return DISCIPLINE_ALIASES.get(discipline, discipline) in AERO_DISCIPLINES
+
+
+def norm_discipline(discipline):
+    d = DISCIPLINE_ALIASES.get(discipline, discipline)
+    return d if d in BASE_RANGES else DEFAULT_DISCIPLINE
+
+
+def range_basis(discipline):
+    """Pour chaque angle : (niveau de preuve, explication, clés de REFERENCES). Sert à l'affichage « d'où viennent les cibles »."""
+    aero = is_aero(discipline)
+    comp = norm_discipline(discipline) == "Compétition / Course"
+    return {
+        "knee": ("étude", "25 à 35° de flexion du genou pédale en bas pour une mesure posée (soit 145–155°), 30 à 40° en pédalant (140–150°). "
+                          "La revue de Bini et al. situe l'optimum entre 25 et 30°.", ["holmes", "bini2011", "ferrer2012", "bini2016"]),
+        "torso": (("étude", "Positions testées de 0 à 24° : un dos parfaitement horizontal n'est pas optimal ; plus la vitesse visée est élevée, plus le dos bas est rentable "
+                            "(l'aérodynamisme l'emporte au-delà de 46 km/h, une position plus relevée est préférable sous 30 km/h).", ["fintelman2014"]) if aero else
+                  ("étude", ("30 à 45° pour une pratique de course (Burt ; Pruitt & Matheny)." if comp else
+                             "40 à 50° pour une pratique sportive régulière (Pruitt & Matheny), 45 à 55° pour une pratique loisir (Burt).")
+                   + " Angle entre la ligne hanche-épaule et l'horizontale.", ["holliday2021"])),
+        "hip": (("étude", "Méthode F.I.S.T. : angle épaule – hanche – boîtier de pédalier de 95 à 105°, que les triathlètes adoptent spontanément. "
+                          "Le boîtier est estimé à la verticale de la pédale en bas.", ["fist"]) if aero else
+                ("pratique", "Pas de norme publiée pour l'angle épaule – hanche – genou pédale en bas : la plage est déduite de l'inclinaison du tronc visée. "
+                             "À lire comme un repère.", [])),
+        "shoulder": ("pratique", "Angle buste – bras d'environ 90° (80° selon F.I.S.T.) : pas d'étude de référence, c'est un repère de bike-fitters.", ["bikefit"]),
+        "elbow": (("pratique", "Avant-bras posés sur les accoudoirs, coude fléchi autour de 90 à 110° : repère usuel, sans norme publiée.", []) if aero else
+                  ("étude", "15 à 30° de flexion du coude mains sur les cocottes (Burt : 20–30° ; moyenne mesurée de 19 ± 8° chez 50 cyclistes entraînés).", ["holliday2021"])),
+        "ankle": ("pratique", "5 à 15° de flexion plantaire (Burt). La cheville est l'articulation la moins bien mesurée par analyse d'image : "
+                              "elle pèse peu dans le score et sert d'indice.", ["holliday2021", "bini2023"]),
+    }
+
+
 META = {
-    "knee": dict(label="Genou · point mort bas", short="Genou", icon="🦵", w=0.30, tol=8, vmin=110, vmax=180),
+    "knee": dict(label="Genou · point mort bas", short="Genou", icon="🦵", w=0.35, tol=8, vmin=110, vmax=180),
     "torso": dict(label="Inclinaison du tronc", short="Tronc", icon="📐", w=0.20, tol=10, vmin=0, vmax=80),
-    "hip": dict(label="Ouverture de hanche", short="Hanche", icon="🔓", w=0.15, tol=12, vmin=60, vmax=150),
-    "shoulder": dict(label="Angle d'épaule", short="Épaule", icon="💪", w=0.15, tol=12, vmin=50, vmax=120),
+    "hip": dict(label="Ouverture de hanche", short="Hanche", icon="🔓", w=0.12, tol=12, vmin=60, vmax=150),
+    "shoulder": dict(label="Angle d'épaule", short="Épaule", icon="💪", w=0.13, tol=12, vmin=50, vmax=120),
     "elbow": dict(label="Angle du coude", short="Coude", icon="🦾", w=0.10, tol=12, vmin=60, vmax=180),
-    "ankle": dict(label="Cheville", short="Cheville", icon="🦶", w=0.10, tol=12, vmin=70, vmax=140),
+    "ankle": dict(label="Cheville (indicatif)", short="Cheville", icon="🦶", w=0.05, tol=14, vmin=70, vmax=140),
 }
 ORDER = ["knee", "torso", "hip", "shoulder", "elbow", "ankle"]
 
@@ -92,10 +165,17 @@ DISCIPLINE_TIPS = {
         "Une tige de selle télescopique permet de garder une hauteur optimale à la montée.",
         "Vérifiez que le tronc reste assez relevé pour garder du poids sur la roue avant en montée raide.",
     ],
-    "Triathlon / CLM": [
-        "Sur prolongateurs, les coudes sont fléchis à 80–110° : c'est normal et recherché pour l'aérodynamisme.",
-        "Une hanche plus ouverte que la cible limite la respiration et la puissance : l'avant du bassin doit pouvoir basculer.",
-        "La selle est souvent plus avancée qu'à vélo de route : contrôlez le recul à 3 h dans l'onglet dédié.",
+    "Contre-la-montre (prolongateurs)": [
+        "La mesure se fait en position de course : avant-bras posés sur les accoudoirs, mains sur les prolongateurs.",
+        "Un dos parfaitement horizontal n'est pas optimal : la puissance baisse quand le tronc descend. Le dos très bas ne paie qu'aux vitesses élevées (au-delà de 46 km/h environ).",
+        "Si la hanche se ferme sous 95°, avancez la selle ou raccourcissez les manivelles avant de relever les accoudoirs.",
+        "Vérifiez la conformité de votre position au règlement de votre fédération avant une compétition.",
+    ],
+    "Triathlon (prolongateurs)": [
+        "La mesure se fait en position de course : avant-bras posés sur les accoudoirs, mains sur les prolongateurs.",
+        "Sur longue distance, la position doit être tenable des heures et permettre de courir ensuite : visez une hanche ouverte (95 à 105°) plutôt qu'un dos très bas.",
+        "Sous 30 km/h de moyenne, une position un peu plus relevée coûte peu en aérodynamisme et préserve la puissance.",
+        "La selle est plus avancée qu'à vélo de route : contrôlez le recul à 3 h dans la rubrique dédiée.",
     ],
 }
 
@@ -178,9 +258,18 @@ def mobility_profile(answers: dict) -> dict:
     return {"score": score, "flex_label": flex, "shifts": shifts, "notes": notes}
 
 
-def get_ranges(discipline, flexibility="Moyenne", goal="Équilibré", extra=None):
-    """Plages cibles ajustées selon la souplesse, l'objectif et un éventuel décalage par zone."""
+def get_ranges(discipline, flexibility="Moyenne", goal="Équilibré", extra=None, dynamic=False):
+    """Plages cibles ajustées selon la souplesse, l'objectif et un éventuel décalage par zone.
+
+    dynamic=True : l'image a été prise en pédalant (vidéo, photo en roulant) ; les cibles du genou, de la hanche et de la
+    cheville sont décalées, car une jambe en mouvement est plus fléchie qu'une jambe posée (Ferrer-Roca 2012, Bini & Hume 2016)."""
+    discipline = norm_discipline(discipline)
     r = {k: tuple(v) for k, v in BASE_RANGES[discipline].items()}
+    if dynamic:
+        for k, d in DYNAMIC_SHIFT.items():
+            if k == "hip" and is_aero(discipline):
+                continue                      # l'angle F.I.S.T. passe par le boîtier de pédalier : il ne dépend pas du mouvement de la jambe
+            r[k] = (r[k][0] + d, r[k][1] + d)
     shift = FLEX_SHIFT.get(flexibility, 0) + GOAL_SHIFT.get(goal, 0)
     extra = extra or {}
     t = shift + extra.get("torso", 0)
@@ -346,11 +435,36 @@ def torso_inclination(shoulder, hip):
     return float(np.degrees(np.arctan2(dy, dx)))
 
 
-def compute_metrics(pts):
+def bb_estimate(pts):
+    """Position estimée du boîtier de pédalier quand la pédale est en bas : à la verticale de l'axe de pédale (sous l'avant du pied),
+    une longueur de manivelle plus haut. La manivelle vaut environ 40 % de la longueur de jambe genou-cheville (172,5 mm pour 430 mm)."""
+    heel, toe = pts["heel"], pts["foot_index"]
+    axle = (heel[0] + 0.70 * (toe[0] - heel[0]), heel[1] + 0.70 * (toe[1] - heel[1]))
+    crank = 0.40 * math.dist(pts["knee"], pts["ankle"])
+    return (axle[0], axle[1] - crank)
+
+
+def hip_angle_bb(pts):
+    """Angle de hanche façon F.I.S.T. : épaule – hanche – boîtier de pédalier (référence des vélos à prolongateurs)."""
+    return angle_3pts(pts["shoulder"], pts["hip"], bb_estimate(pts))
+
+
+def aero_details(pts, facing_right=True):
+    """Mesures propres aux prolongateurs : inclinaison des avant-bras (0° = horizontaux, > 0 = mains plus hautes que les coudes)
+    et position du coude par rapport à l'épaule (0° = bras vertical, > 0 = coude en avant de l'épaule)."""
+    fwd = 1.0 if facing_right else -1.0
+    e, w, sh = pts["elbow"], pts["wrist"], pts["shoulder"]
+    forearm = math.degrees(math.atan2(e[1] - w[1], max(1e-6, (w[0] - e[0]) * fwd)))
+    upper = math.degrees(math.atan2((e[0] - sh[0]) * fwd, max(1e-6, e[1] - sh[1])))
+    return dict(forearm_tilt=forearm, upper_arm_fwd=upper)
+
+
+def compute_metrics(pts, aero=False):
+    """Les six angles. aero=True (contre-la-montre, triathlon) : la hanche est mesurée vers le boîtier de pédalier (méthode F.I.S.T.)."""
     return {
         "knee": angle_3pts(pts["hip"], pts["knee"], pts["ankle"]),
         "torso": torso_inclination(pts["shoulder"], pts["hip"]),
-        "hip": angle_3pts(pts["shoulder"], pts["hip"], pts["knee"]),
+        "hip": hip_angle_bb(pts) if aero else angle_3pts(pts["shoulder"], pts["hip"], pts["knee"]),
         "shoulder": angle_3pts(pts["hip"], pts["shoulder"], pts["elbow"]),
         "elbow": angle_3pts(pts["shoulder"], pts["elbow"], pts["wrist"]),
         "ankle": angle_3pts(pts["knee"], pts["ankle"], pts["foot_index"]),
@@ -572,7 +686,8 @@ TYRES = {
     "Compétition / Course": dict(label="26 mm", front=5.5, rear=5.8, bike=7.5, lo=4.0, hi=7.0, step=0.1),
     "Gravel": dict(label="40 mm", front=2.5, rear=2.7, bike=9.5, lo=1.8, hi=4.0, step=0.1),
     "VTT / XC": dict(label="2,25 pouces (57 mm)", front=1.50, rear=1.65, bike=12.0, lo=1.1, hi=2.4, step=0.05),
-    "Triathlon / CLM": dict(label="25 mm", front=5.8, rear=6.1, bike=9.0, lo=4.5, hi=7.5, step=0.1),
+    "Contre-la-montre (prolongateurs)": dict(label="25 mm", front=5.8, rear=6.1, bike=9.0, lo=4.5, hi=7.5, step=0.1),
+    "Triathlon (prolongateurs)": dict(label="25 mm", front=5.8, rear=6.1, bike=9.0, lo=4.5, hi=7.5, step=0.1),
 }
 
 
@@ -583,7 +698,7 @@ def fr_num(x) -> str:
 
 def tyre_pressure(discipline, weight_kg):
     """Pression de départ indicative (bar), proportionnelle au poids cycliste + vélo. None si le poids est inconnu."""
-    t = TYRES.get(discipline)
+    t = TYRES.get(DISCIPLINE_ALIASES.get(discipline, discipline))
     if t is None or not weight_kg or weight_kg < 30:
         return None
     k = (float(weight_kg) + t["bike"]) / (71.0 + t["bike"])
@@ -606,7 +721,7 @@ def bike_adjustments(m, ev, ranges, ctx, kops=None):
     longer, shorter ou None), amount (texte court, ex. « 5 mm »), status (bad, warn, info), title (action),
     reasons (liste de constats), conflicts (mesures qui demanderaient le réglage inverse)."""
     seg = ctx["seg"]
-    tt = ctx.get("discipline", "").startswith("Triathlon")
+    tt = is_aero(ctx.get("discipline", ""))
     cand = []
 
     def add(key, part, direction, amount, title, reason, status=None):
@@ -635,20 +750,27 @@ def bike_adjustments(m, ev, ranges, ctx, kops=None):
 
     k = ev["torso"]
     if k["dir"] == "low":
-        add("torso", "bars", "up", "10 mm", "Relever le cintre de 10 mm (entretoises)", f"Posture plus basse que la cible : tronc à {m['torso']:.0f}° ({rng('torso')})")
+        add("torso", "bars", "up", "10 mm", "Relever les accoudoirs de 10 mm (cales sous les appuis)" if tt else "Relever le cintre de 10 mm (entretoises)",
+            f"Posture plus basse que la cible : tronc à {m['torso']:.0f}° ({rng('torso')})")
     elif k["dir"] == "high":
-        add("torso", "bars", "down", "5 à 10 mm", "Abaisser le cintre de 5 à 10 mm si vous visez la performance",
+        add("torso", "bars", "down", "5 à 10 mm", "Abaisser les accoudoirs de 5 à 10 mm, par paliers" if tt else "Abaisser le cintre de 5 à 10 mm si vous visez la performance",
             f"Posture plus relevée que la cible : tronc à {m['torso']:.0f}° ({rng('torso')})")
     k = ev["hip"]
     if k["dir"] == "low":
-        add("hip", "bars", "up", "", "Relever le cintre ou raccourcir légèrement la potence", f"Hanche trop fermée : {m['hip']:.0f}° ({rng('hip')})")
+        if tt:
+            add("hip", "saddle", "fwd", "5 à 10 mm", "Avancer la selle de 5 à 10 mm pour rouvrir la hanche", f"Hanche trop fermée : {m['hip']:.0f}° ({rng('hip')})")
+        else:
+            add("hip", "bars", "up", "", "Relever le cintre ou raccourcir légèrement la potence", f"Hanche trop fermée : {m['hip']:.0f}° ({rng('hip')})")
     elif k["dir"] == "high":
-        add("hip", "bars", "down", "", "Abaisser progressivement le cintre si vous recherchez la performance", f"Hanche très ouverte : {m['hip']:.0f}° ({rng('hip')})")
+        add("hip", "bars", "down", "", "Abaisser progressivement les accoudoirs : la hanche a de la marge" if tt else "Abaisser progressivement le cintre si vous recherchez la performance",
+            f"Hanche très ouverte : {m['hip']:.0f}° ({rng('hip')})")
     k = ev["shoulder"]
     if k["dir"] == "high":
-        add("shoulder", "stem", "shorter", "10 mm", "Raccourcir la potence de 10 mm", f"Allonge trop importante : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
+        add("shoulder", "stem", "shorter", "10 mm", "Reculer les accoudoirs de 10 mm (coudes sous les épaules)" if tt else "Raccourcir la potence de 10 mm",
+            f"Allonge trop importante : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
     elif k["dir"] == "low":
-        add("shoulder", "stem", "longer", "10 mm", "Allonger la potence de 10 mm", f"Allonge trop courte : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
+        add("shoulder", "stem", "longer", "10 mm", "Avancer les accoudoirs de 10 mm" if tt else "Allonger la potence de 10 mm",
+            f"Allonge trop courte : épaule à {m['shoulder']:.0f}° ({rng('shoulder')})")
     k = ev["elbow"]
     if k["dir"] == "high":
         if tt:
@@ -656,7 +778,8 @@ def bike_adjustments(m, ev, ranges, ctx, kops=None):
         else:
             add("elbow", "stem", "shorter", "", "Raccourcir la potence ou relever le cintre", f"Bras quasi tendus : coude à {m['elbow']:.0f}° ({rng('elbow')})")
     elif k["dir"] == "low":
-        add("elbow", "stem", "longer", "10 mm", "Allonger la potence de 10 mm ou relever légèrement le cintre", f"Coudes très fléchis : {m['elbow']:.0f}° ({rng('elbow')})")
+        add("elbow", "stem", "longer", "10 mm", "Allonger les prolongateurs de 10 mm (mains plus loin)" if tt else "Allonger la potence de 10 mm ou relever légèrement le cintre",
+            f"Coudes très fléchis : {m['elbow']:.0f}° ({rng('elbow')})")
     k = ev["ankle"]
     if k["dir"] == "low":
         add("ankle", "cleats", "fwd", "2 à 3 mm", "Avancer les cales de 2 à 3 mm", f"Talon très bas : cheville à {m['ankle']:.0f}° ({rng('ankle')})")
@@ -808,7 +931,7 @@ def build_recommendations(m, ev, ranges, ctx):
     """ctx : height (cm), seg (cuisse, jambe en mm), discipline."""
     seg = ctx["seg"]
     H_ = ctx["height"]
-    tt = ctx.get("discipline", "").startswith("Triathlon")
+    tt = is_aero(ctx.get("discipline", ""))
     recs = []
 
     def add(key, status, title, diag, actions=None):
@@ -857,15 +980,21 @@ def build_recommendations(m, ev, ranges, ctx):
     if k["dir"] == "low":
         add("torso", k["status"], "Posture plus basse que la cible",
             f"Tronc à <b>{m['torso']:.0f}°</b> de l'horizontale (cible {lo}–{hi}°). Position très aérodynamique, mais exigeante pour les lombaires, la nuque et les mains.",
-            ["Relever le cintre de 10 mm (entretoises) puis réévaluer.", "Option : potence plus courte ou à angle plus relevé.",
-             "Travailler la mobilité des ischio-jambiers et la gaine abdominale pour tenir la position."])
+            (["Relever les accoudoirs de 10 mm (cales sous les appuis) puis réévaluer.",
+              "Un dos parfaitement horizontal n'est pas optimal : la puissance baisse quand le tronc descend (Fintelman et al., 2014).",
+              "Le dos très bas ne se justifie qu'aux vitesses élevées (au-delà de 46 km/h environ) ; sous 30 km/h, une position plus relevée est préférable."] if tt else
+             ["Relever le cintre de 10 mm (entretoises) puis réévaluer.", "Option : potence plus courte ou à angle plus relevé.",
+              "Travailler la mobilité des ischio-jambiers et la gaine abdominale pour tenir la position."]))
     elif k["dir"] == "high":
         extra = "Sur vélo de contre-la-montre, cette posture est trop relevée pour exploiter les prolongateurs. " if tt else ""
         add("torso", k["status"], "Posture plus relevée que la cible",
             f"{extra}Tronc à <b>{m['torso']:.0f}°</b> (cible {lo}–{hi}°). Confort élevé, mais prise au vent importante et appui accru sur la selle.",
-            ["Si l'objectif est la performance : retirer une entretoise de 5 à 10 mm progressivement.",
-             "Option : potence plus longue (+10 mm) pour allonger le buste.",
-             "Progresser par paliers sur 3 à 4 semaines pour laisser le corps s'adapter."])
+            (["Abaisser les accoudoirs de 5 à 10 mm à la fois, en vérifiant que la hanche reste au-dessus de 95°.",
+              "Si la hanche se ferme trop, avancer la selle ou raccourcir les manivelles avant de descendre davantage.",
+              "Progresser par paliers sur 3 à 4 semaines : une position basse qu'on ne tient pas fait perdre plus de watts qu'elle n'en fait gagner."] if tt else
+             ["Si l'objectif est la performance : retirer une entretoise de 5 à 10 mm progressivement.",
+              "Option : potence plus longue (+10 mm) pour allonger le buste.",
+              "Progresser par paliers sur 3 à 4 semaines pour laisser le corps s'adapter."]))
     else:
         add("torso", "ok", "Inclinaison du tronc validée", f"Tronc à <b>{m['torso']:.0f}°</b>, cohérent avec la plage {lo}–{hi}° pour votre profil.")
 
@@ -873,13 +1002,18 @@ def build_recommendations(m, ev, ranges, ctx):
     k = ev["hip"]
     if k["dir"] == "low":
         add("hip", k["status"], "Hanche trop fermée",
-            f"Angle tronc-cuisse de <b>{m['hip']:.0f}°</b> (cible {lo}–{hi}°) : l'abdomen est comprimé, l'amplitude respiratoire et la liberté du bassin sont limitées.",
-            ["Relever le cintre ou raccourcir légèrement la potence.", "Vérifier l'inclinaison de la selle (nez non relevé) et un recul suffisant.",
-             "Assouplir les fléchisseurs de hanche (psoas, droit fémoral)."])
+            (f"Angle épaule – hanche – pédalier de <b>{m['hip']:.0f}°</b> (cible {lo}–{hi}°, méthode F.I.S.T.)" if tt else f"Angle tronc-cuisse de <b>{m['hip']:.0f}°</b> (cible {lo}–{hi}°)")
+            + " : l'abdomen est comprimé, l'amplitude respiratoire et la liberté du bassin sont limitées.",
+            (["Avancer la selle de 5 à 10 mm (et la remonter de 2 à 3 mm pour garder la même extension du genou).",
+              "Option : manivelles plus courtes (165 mm ou moins), qui ouvrent la hanche en haut du coup de pédale.",
+              "À défaut, relever les accoudoirs de 10 mm."] if tt else
+             ["Relever le cintre ou raccourcir légèrement la potence.", "Vérifier l'inclinaison de la selle (nez non relevé) et un recul suffisant.",
+              "Assouplir les fléchisseurs de hanche (psoas, droit fémoral)."]))
     elif k["dir"] == "high":
         add("hip", k["status"], "Hanche très ouverte",
             f"Angle de <b>{m['hip']:.0f}°</b> (cible {lo}–{hi}°) : posture très verticale, favorable au confort mais peu aérodynamique.",
-            ["Abaisser progressivement le cintre si vous recherchez de la performance.", "Sinon, conserver ce réglage pour l'endurance longue distance."])
+            (["La hanche a de la marge : les accoudoirs peuvent descendre par paliers de 5 à 10 mm.", "Sinon, conserver ce réglage : il préserve la puissance et la course à pied qui suit."] if tt else
+             ["Abaisser progressivement le cintre si vous recherchez de la performance.", "Sinon, conserver ce réglage pour l'endurance longue distance."]))
     else:
         add("hip", "ok", "Ouverture de hanche correcte", f"Angle de <b>{m['hip']:.0f}°</b> dans la cible {lo}–{hi}° : bonne liberté de mouvement.")
 
@@ -888,11 +1022,13 @@ def build_recommendations(m, ev, ranges, ctx):
     if k["dir"] == "high":
         add("shoulder", k["status"], "Allonge trop importante",
             f"Angle épaule de <b>{m['shoulder']:.0f}°</b> (cible {lo}–{hi}°) : les bras partent trop loin vers l'avant, transférant du poids sur les mains et les épaules.",
-            ["Raccourcir la potence de 10 mm et réévaluer.", "Vérifier le recul de selle : une selle trop reculée allonge artificiellement le cockpit."])
+            (["Reculer les accoudoirs de 10 mm : le coude doit se trouver sous l'épaule ou juste devant.", "Vérifier que la selle n'est pas trop reculée."] if tt else
+             ["Raccourcir la potence de 10 mm et réévaluer.", "Vérifier le recul de selle : une selle trop reculée allonge artificiellement le cockpit."]))
     elif k["dir"] == "low":
         add("shoulder", k["status"], "Allonge trop courte",
             f"Angle épaule de <b>{m['shoulder']:.0f}°</b> (cible {lo}–{hi}°) : le cockpit est compact, les épaules sont repliées sur le buste.",
-            ["Allonger la potence de 10 mm.", "Vérifier que les genoux ne touchent pas les bras en danseuse."])
+            (["Avancer les accoudoirs de 10 mm.", "Vérifier que les genoux ne touchent pas les coudes en haut du coup de pédale."] if tt else
+             ["Allonger la potence de 10 mm.", "Vérifier que les genoux ne touchent pas les bras en danseuse."]))
     else:
         add("shoulder", "ok", "Allonge adaptée", f"Angle épaule de <b>{m['shoulder']:.0f}°</b> dans la cible {lo}–{hi}°.")
 
@@ -1866,6 +2002,18 @@ def _report_pdf_reportlab(r):
         E.append(Paragraph("Lexique", S["h2"]))
         for t, d in gl:
             E.append(KeepTogether([Paragraph(f"<b>{T(t)}</b> — {T(d)}", S["p"]), Spacer(1, 3)]))
+    basis = range_basis(r["discipline"])
+    used = []
+    for k in ORDER:
+        for ref in basis[k][2]:
+            if ref not in used:
+                used.append(ref)
+    if used:
+        E.append(Paragraph("Sources des angles visés", S["h2"]))
+        E.append(Paragraph("Les cibles s'appuient sur les publications suivantes quand il en existe ; à défaut, sur des repères de bike-fitters. "
+                           "La mesure par analyse d'image a une précision d'environ ± 5° par angle.", S["mut"]))
+        for i_, ref in enumerate(used, 1):
+            E.append(Paragraph(f"[{i_}] {T(REFERENCES[ref]['cite'])}", S["small"]))
     E += [Spacer(1, 10), Paragraph(T(r["disclaimer"]), S["small"])]
 
     doc.build(E)

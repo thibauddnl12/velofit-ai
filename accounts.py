@@ -35,11 +35,17 @@ RESET_ITERS = 60_000
 DEFAULT_SETTINGS = {
     "free_credits": "3",          # analyses gratuites offertes à chaque nouveau compte
     "allow_signup": "1",          # 1 = les visiteurs peuvent créer un compte eux-mêmes
+    "plan_enabled": "1",          # offre à durée limitée proposée (1) ou non (0)
     "plan_name": "Abonnement mensuel",
     "plan_price": "9,90 € / mois",
     "plan_days": "30",            # durée accordée par paiement
     "payment_link": "",           # lien de paiement Stripe (Payment Link, paiement unique)
     "stripe_link_id": "",         # optionnel : identifiant plink_... pour limiter la recherche
+    "life_enabled": "0",          # offre « accès illimité, sans date de fin » proposée (1) ou non (0)
+    "life_name": "Accès illimité",
+    "life_price": "49 € une fois",
+    "life_link": "",              # lien de paiement Stripe de l'offre illimitée
+    "life_link_id": "",           # identifiant plink_... de ce lien (obligatoire si les deux offres sont proposées)
     "contact": "",                # e-mail ou message affiché sur la page d'abonnement
 }
 
@@ -293,8 +299,39 @@ def add_credits(username, n: int):
         con.execute("UPDATE users SET free_credits=MAX(0, free_credits+?) WHERE username=?", (int(n), clean_username(username)))
 
 
+LIFETIME = "9999-12-31T00:00:00"      # date de fin d'un accès illimité : jamais atteinte
+LIFETIME_DAYS = -1                    # valeur de la colonne « days » d'un paiement pour l'offre illimitée
+
+
+def is_lifetime(until) -> bool:
+    d = _parse(until) if isinstance(until, str) else until
+    return bool(d and d.year >= 9000)
+
+
+def set_lifetime(username):
+    """Accès illimité, sans date de fin."""
+    u = clean_username(username)
+    with _db() as con:
+        cur = con.execute("UPDATE users SET sub_until=? WHERE username=?", (LIFETIME, u))
+    return LIFETIME if cur.rowcount else None
+
+
+def offers(cfg=None) -> list[dict]:
+    """Offres proposées aux utilisateurs, dans l'ordre d'affichage : dict(kind, name, price, days, link, link_id).
+    kind = "days" (accès pendant N jours par paiement) ou "life" (accès illimité, sans date de fin)."""
+    cfg = cfg or get_settings()
+    out = []
+    if cfg.get("plan_enabled", "1") == "1":
+        out.append(dict(kind="days", name=cfg["plan_name"], price=cfg["plan_price"], days=max(1, setting_int(cfg, "plan_days")),
+                        link=(cfg.get("payment_link") or "").strip(), link_id=(cfg.get("stripe_link_id") or "").strip()))
+    if cfg.get("life_enabled") == "1":
+        out.append(dict(kind="life", name=cfg["life_name"], price=cfg["life_price"], days=None,
+                        link=(cfg.get("life_link") or "").strip(), link_id=(cfg.get("life_link_id") or "").strip()))
+    return out
+
+
 def set_subscription(username, days: int):
-    """Prolonge l'abonnement de `days` jours à partir de la date de fin actuelle (ou d'aujourd'hui)."""
+    """Prolonge l'abonnement de `days` jours à partir de la date de fin actuelle (ou d'aujourd'hui). Un accès illimité reste illimité."""
     u = clean_username(username)
     with _db() as con:
         con.execute("BEGIN IMMEDIATE")
@@ -302,6 +339,9 @@ def set_subscription(username, days: int):
         if r is None:
             con.execute("ROLLBACK")
             return None
+        if is_lifetime(r["sub_until"]):
+            con.execute("COMMIT")
+            return LIFETIME
         base = max(now(), _parse(r["sub_until"]) or now())
         until = _iso(base + timedelta(days=int(days)))
         con.execute("UPDATE users SET sub_until=? WHERE username=?", (until, u))
@@ -440,7 +480,7 @@ def status(user: dict) -> dict:
     sub_active = bool(until and until > now())
     free_left = max(0, int(user["free_credits"]) - int(user["free_used"]))
     is_admin = user["role"] == "admin"
-    return dict(is_admin=is_admin, sub_active=sub_active, sub_until=until, free_total=int(user["free_credits"]),
+    return dict(is_admin=is_admin, sub_active=sub_active, sub_until=until, lifetime=is_lifetime(until), free_total=int(user["free_credits"]),
                 free_used=int(user["free_used"]), free_left=free_left, can_analyze=is_admin or sub_active or free_left > 0)
 
 
@@ -487,8 +527,9 @@ def stats() -> dict:
 # ------------------------------------------------------------------------------
 #  PAIEMENTS STRIPE (sans serveur de webhook : vérification à la demande)
 # ------------------------------------------------------------------------------
-def payment_url(cfg: dict, username: str, email: str = "") -> str:
-    link = (cfg.get("payment_link") or "").strip()
+def payment_url(cfg: dict, username: str, email: str = "", link: str = None) -> str:
+    """Lien de paiement complété par l'identifiant du compte. `link` : lien d'une offre précise (par défaut, l'offre à durée limitée)."""
+    link = (cfg.get("payment_link") or "").strip() if link is None else (link or "").strip()
     if not link.startswith("https://"):
         return ""
     params = {"client_reference_id": clean_username(username)}
@@ -513,10 +554,12 @@ def sync_payments(username, secret_key, cfg=None):
     cfg = cfg or get_settings()
     if not secret_key:
         return 0, "La vérification automatique n'est pas configurée : contactez l'administrateur."
-    days = max(1, setting_int(cfg, "plan_days"))
+    offs = offers(cfg)
+    if not offs:
+        return 0, "Aucune offre n'est ouverte pour le moment : contactez l'administrateur."
     params = {"limit": 100, "created[gte]": int((now() - timedelta(days=90)).timestamp())}
-    if cfg.get("stripe_link_id"):
-        params["payment_link"] = cfg["stripe_link_id"]
+    if len(offs) == 1 and offs[0]["link_id"]:
+        params["payment_link"] = offs[0]["link_id"]
     found, after = [], None
     try:
         for _ in range(5):
@@ -531,22 +574,43 @@ def sync_payments(username, secret_key, cfg=None):
             after = items[-1]["id"]
     except Exception as exc:  # réseau, clé invalide…
         return 0, f"Impossible de joindre le service de paiement ({type(exc).__name__}). Réessayez plus tard."
-    new = 0
+
+    def offer_of(session):
+        """À quelle offre ce paiement correspond-il ? On se fie à l'identifiant du lien de paiement (plink_...) quand il est connu ;
+        une offre sans identifiant reçoit les paiements restants, à condition d'être la seule dans ce cas."""
+        link = session.get("payment_link") or ""
+        for o in offs:
+            if o["link_id"] and link == o["link_id"]:
+                return o
+        anonymous = [o for o in offs if not o["link_id"]]
+        return anonymous[0] if len(anonymous) == 1 else None
+
+    new_days, got_life = 0, False
     for s in found:
         if s.get("payment_status") != "paid" or s.get("status") != "complete":
             continue
         if clean_username(s.get("client_reference_id") or "") != u:
             continue
+        off = offer_of(s)
+        if off is None:
+            continue
+        days = LIFETIME_DAYS if off["kind"] == "life" else off["days"]
         try:
             with _db() as con:
                 con.execute("INSERT INTO payments(session_id,username,amount,currency,ts,days) VALUES(?,?,?,?,?,?)",
                             (s["id"], u, s.get("amount_total"), s.get("currency"), _iso(now()), days))
         except sqlite3.IntegrityError:
             continue
-        set_subscription(u, days)
-        new += 1
-    if new:
-        return new, f"Paiement confirmé : abonnement prolongé de {days * new} jours."
+        if off["kind"] == "life":
+            set_lifetime(u)
+            got_life = True
+        else:
+            set_subscription(u, days)
+            new_days += days
+    if got_life:
+        return 1, "Paiement confirmé : votre accès est désormais illimité, sans date de fin."
+    if new_days:
+        return 1, f"Paiement confirmé : abonnement prolongé de {new_days} jours."
     return 0, "Aucun nouveau paiement trouvé pour ce compte. Si vous venez de payer, patientez une minute puis réessayez."
 
 

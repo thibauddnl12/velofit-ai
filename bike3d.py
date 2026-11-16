@@ -20,8 +20,10 @@ KINDS = {
     "Gravel": "gravel",
     "VTT / XC": "mtb",
     "Triathlon / CLM": "tri",
+    "Triathlon (prolongateurs)": "tri",
+    "Contre-la-montre (prolongateurs)": "tri",
 }
-KIND_LABEL = {"road": "Vélo de route", "gravel": "Gravel", "mtb": "VTT", "tri": "Triathlon / CLM"}
+KIND_LABEL = {"road": "Vélo de route", "gravel": "Gravel", "mtb": "VTT", "tri": "Vélo à prolongateurs"}
 
 
 def viewer_html(adjustments, discipline: str = "Route / Endurance") -> str:

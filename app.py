@@ -98,8 +98,9 @@ ss = st.session_state
 # ------------------------------------------------------------------------------
 #  ÉTAT ET PROFIL
 # ------------------------------------------------------------------------------
+SHOT_MODES = ["À l'arrêt, en posant (pédale en bas)", "En pédalant (photo prise en roulant)"]
 DEFAULTS = dict(height=175, weight=0, inseam=0, shoulder_w=0, flex="Moyenne", discipline="Route / Endurance", goal="Équilibré",
-                side_choice="Auto", complaints=[], target_score=85, use_mob=False, learn=True, show_grid=False,
+                side_choice="Auto", complaints=[], target_score=85, use_mob=False, learn=True, show_grid=False, shot_mode=SHOT_MODES[0],
                 mode="Cycliste", profile_name="", studio="", logo_png=None)
 FLEX_OPTS = ["Limitée", "Moyenne", "Très souple"]
 GOAL_OPTS = ["Confort", "Équilibré", "Performance"]
@@ -118,7 +119,7 @@ for _k, _v in DEFAULTS.items():
 for _t in core.MOBILITY_TESTS:
     ss.setdefault("mob_" + _t["key"], _mob_default(_t))
 # Les réglages restent mémorisés même quand leur champ n'est pas affiché (ex. pendant la création du profil).
-for _k in PROFILE_KEYS + ["profile_name", "mode", "learn", "side_choice", "show_grid"]:
+for _k in PROFILE_KEYS + ["profile_name", "mode", "learn", "side_choice", "show_grid", "shot_mode"]:
     ss[_k] = ss[_k]
 
 
@@ -146,8 +147,7 @@ def apply_profile(name):
         except (TypeError, ValueError):
             ss[k] = DEFAULTS[k]
     ss["target_score"] = int(round(ss["target_score"] / 5) * 5)
-    if ss["discipline"] not in core.BASE_RANGES:
-        ss["discipline"] = DEFAULTS["discipline"]
+    ss["discipline"] = core.norm_discipline(ss["discipline"])        # reprend aussi l'ancien nom « Triathlon / CLM »
     if ss["flex"] not in FLEX_OPTS:
         ss["flex"] = DEFAULTS["flex"]
     if ss["goal"] not in GOAL_OPTS:
@@ -411,6 +411,38 @@ def landing():
                 H(f'<div class="glass feat"><div class="ico">{ui_kit.ICONS[ico]}</div><h4>{t}</h4><p>{d}</p></div>')
 
 
+def targets_table(rng, discipline, dynamic=False):
+    """Tableau « angle, cible, niveau de preuve, source » pour la discipline, puis liste des références et limites de la mesure."""
+    basis = core.range_basis(discipline)
+    used, rows = [], []
+    for k in ORDER:
+        level, text, refs = basis[k]
+        for r_ in refs:
+            if r_ not in used:
+                used.append(r_)
+        marks = " ".join(f"[{used.index(r_) + 1}]" for r_ in refs)
+        col = ui_kit.OK if level == "étude" else ui_kit.ACCENT_2
+        rows.append(f'<div class="adj tgt" style="--c:{col}"><div class="t"><b>{_html.escape(META[k]["short"])} : {rng[k][0]}–{rng[k][1]}° '
+                    f'<span class="chip" style="--c:{col};margin-left:6px">{"Étude publiée" if level == "étude" else "Repère de pratique"}</span></b>'
+                    f'<span>{_html.escape(text)} {marks}</span></div></div>')
+    H("".join(rows))
+    st.caption(f"Cibles pour « {discipline} », {'image prise en pédalant' if dynamic else 'photo posée'}, après prise en compte de votre objectif et de votre souplesse "
+               "(qui décalent le tronc et la hanche de quelques degrés).")
+    with st.expander("Références et limites de la mesure"):
+        for i_, r_ in enumerate(used, 1):
+            ref = core.REFERENCES[r_]
+            st.markdown(f"[{i_}] {ref['cite']} [Lien]({ref['url']})")
+        v = core.REFERENCES["bini2023"]
+        st.markdown("**Précision de la mesure par analyse d'image.** Une étude a comparé un réseau de neurones du même type que celui utilisé ici à un système à marqueurs, "
+                    "chez 26 cyclistes filmés de profil : l'écart moyen est d'environ 1° pour la hanche et le genou, mais il peut atteindre 6 à 7° sur une mesure isolée ; "
+                    "l'accord est faible pour la cheville. Retenez une marge d'environ ± 5° sur chaque angle : un écart de 2 ou 3° par rapport à la cible n'est pas significatif. "
+                    f"{v['cite']} [Lien]({v['url']})")
+        st.markdown("**Photo posée ou en mouvement.** À 6 h, un genou mesuré en pédalant est plus fléchi d'environ 8° que sur une pose à l'arrêt (Bini & Hume, 2016) : "
+                    "les cibles sont donc décalées de 5° quand l'image est prise en pédalant (25–35° de flexion à l'arrêt, 30–40° en pédalant).")
+        st.markdown("**Ce que l'application ne mesure pas.** Elle ne voit ni l'alignement du genou de face en mouvement, ni les asymétries du bassin, ni les pressions sur la selle : "
+                    "une étude posturale en cabinet reste la référence en cas de douleur persistante.")
+
+
 def glossary():
     for term, text in core.GLOSSARY_TERMS:
         with st.expander(term):
@@ -610,6 +642,8 @@ with t_guide:
     section(f"Conseils pour la discipline « {ss['discipline']} »")
     for tip in core.DISCIPLINE_TIPS[ss["discipline"]]:
         st.markdown(f"- {tip}")
+    section("D'où viennent les angles visés", "Chaque cible est rattachée à une étude publiée quand il en existe une, sinon à un repère de bike-fitters, signalé comme tel.")
+    targets_table(core.get_ranges(ss["discipline"], ctx_flex, ss["goal"], extra_shift), ss["discipline"])
     section("Glossaire", "Les mots du bike-fitting utilisés dans l'application.")
     glossary()
 
@@ -663,6 +697,11 @@ with t_main:
     else:
         up = st.camera_input("Photo de profil", label_visibility="collapsed")
         photo_bytes = up.getvalue() if up is not None else None
+    if source != "Vidéo de pédalage":
+        st.radio("Comment la photo a-t-elle été prise ?", SHOT_MODES, horizontal=True, key="shot_mode",
+                 help="Une jambe en mouvement est plus fléchie qu'une jambe posée : les angles visés pour le genou, la hanche et la cheville "
+                      "ne sont pas les mêmes (25–35° de flexion du genou à l'arrêt, 30–40° en pédalant).")
+    dynamic = source == "Vidéo de pédalage" or ss["shot_mode"] == SHOT_MODES[1]
     with st.expander("Options de prise de vue (côté visible, grille de cadrage)"):
         st.radio("Côté du cycliste visible sur l'image", ["Auto", "Droit", "Gauche"], horizontal=True, key="side_choice",
                  help="Laissez « Auto » : le côté le mieux visible est choisi automatiquement.")
@@ -731,9 +770,13 @@ with t_main:
     img = A["img"]
     ih, iw = img.shape[:2]
     pts, vis = core.side_points(A["lms"], A["side"], iw, ih)
-    m = A.get("m") or core.compute_metrics(pts)
+    is_tt = core.is_aero(ss["discipline"])
+    ranges = core.get_ranges(ss["discipline"], ctx_flex, ss["goal"], extra_shift, dynamic=dynamic)     # cibles selon photo posée / image en mouvement
+    m = dict(A.get("m") or core.compute_metrics(pts, aero=is_tt))
     if A["video"] is None:
-        m = core.compute_metrics(pts)
+        m = core.compute_metrics(pts, aero=is_tt)
+    elif is_tt:
+        m["hip"] = core.hip_angle_bb(pts)             # prolongateurs : hanche mesurée vers le boîtier de pédalier (méthode F.I.S.T.)
     # --- la jambe est-elle au point mort bas ? Sinon genou, hanche et cheville ne sont pas jugés (une vidéo choisit elle-même le bon instant)
     crank = core.crank_check(A["lms"], A["side"], iw, ih) if A["video"] is None else None
     na_keys = core.BDC_KEYS if (crank and crank["state"] == "off") else ()
@@ -763,7 +806,6 @@ with t_main:
 
     quality, qnotes, leg_tilt = core.assess_quality(A["lms"], vis, pts, iw, ih, img, crank=crank)
     rel_lvl, rel_txt = core.reliability(quality, crank)
-    is_tt = ss["discipline"].startswith("Triathlon")
     aero = core.aero_posture(m)
     recs = core.build_recommendations(m, ev, ranges, ctx)
     annotated = core.annotate(img, pts, m, ev, grid=ss["show_grid"])
@@ -800,11 +842,12 @@ with t_main:
     if aero and not is_tt:
         H(ui_kit.banner("warn", "Position de contre-la-montre détectée, mais le profil indique « " + _html.escape(ss["discipline"]) + " »",
                         "Avant-bras posés et dos très bas : cette posture est jugée ici avec les cibles d'un autre type de vélo, ce qui fausse le score.",
-                        [], f"Choisissez « Triathlon / CLM » dans l'onglet « {PROFILE_TAB} », puis revenez : l'analyse est recalculée aussitôt."))
+                        [], f"Choisissez « Contre-la-montre » ou « Triathlon » dans l'onglet « {PROFILE_TAB} », puis revenez : l'analyse est recalculée aussitôt."))
     elif is_tt and not aero and m["elbow"] >= 140 and m["torso"] >= 32:
-        H(ui_kit.banner("warn", "Le profil indique « Triathlon / CLM », mais la posture n'est pas celle d'un contre-la-montre",
-                        "Bras presque tendus et dos relevé : cette posture est jugée avec les cibles très basses du contre-la-montre, ce qui fausse le score.",
-                        [], f"Si ce vélo n'a pas de prolongateurs, choisissez le bon type de vélo dans l'onglet « {PROFILE_TAB} »."))
+        H(ui_kit.banner("bad", "Photo à reprendre : le cycliste n'est pas sur les prolongateurs",
+                        "Sur un vélo de contre-la-montre ou de triathlon, la position se mesure <b>avant-bras posés sur les accoudoirs, mains sur les prolongateurs</b>. "
+                        "Ici les bras sont presque tendus et le dos relevé : le score ne reflète pas la position de course.",
+                        [], f"Reprenez la photo en position aérodynamique. Si ce vélo n'a pas de prolongateurs, choisissez un autre type de vélo dans l'onglet « {PROFILE_TAB} »."))
     r_sum, r_bike, r_more, r_tools, r_follow, r_rep = st.tabs(
         ["Résumé", "Réglages du vélo", "Analyses complémentaires", "Simulateur & transfert", "Enregistrer & comparer", "Rapport"])
 
@@ -835,6 +878,10 @@ with t_main:
         bike_box = st.container()      # rempli plus bas, une fois le recul de selle (photo à 3 h) connu
 
         section("Vos 6 angles mesurés", "La zone verte de chaque jauge est la plage visée pour votre profil ; le trait indique votre mesure.")
+        st.caption(("Cibles pour une image prise en pédalant" if dynamic else "Cibles pour une photo posée, à l'arrêt") + f" · « {ss['discipline']} ». "
+                   "Précision de la mesure : environ ± 5° par angle ; un écart de 2 ou 3° n'est pas significatif. "
+                   + ("La hanche est mesurée vers le pédalier (méthode F.I.S.T.). " if is_tt else "")
+                   + "Sources détaillées dans l'onglet « Guide ».")
         c1, c2, c3 = st.columns(3)
         for i, k in enumerate(ORDER):
             with (c1, c2, c3)[i % 3]:
@@ -910,9 +957,11 @@ with t_main:
             if ctx["inseam"] > 0:
                 e = ctx["inseam"]
                 x1, x2, x3 = st.columns(3)
-                x1.metric("LeMond (0,883 × entrejambe)", f"{e * 0.883:.1f} cm", help="Axe du boîtier de pédalier → dessus de selle")
-                x2.metric("Hamley (1,09 × entrejambe)", f"{e * 1.09:.1f} cm", help="Axe de pédale au point bas → dessus de selle")
-                x3.metric("Taille de cadre route (≈ 0,665 × entrejambe)", f"{e * 0.665:.1f} cm", help="Tube de selle, très indicatif.")
+                x1.metric("Pédale en bas → dessus de selle", f"{e * 1.06:.1f} à {e * 1.09:.1f} cm", help="106 à 109 % de l'entrejambe : la plage classique, mesurée de l'axe de pédale au point bas jusqu'au dessus de la selle.")
+                x2.metric("Même mesure, étude de 2012", f"{e * 1.086:.1f} à {e * 1.104:.1f} cm", help="108,6 à 110,4 % de l'entrejambe : plage qui donne 30 à 40° de flexion du genou en pédalant chez des cyclistes entraînés (Ferrer-Roca et al., 2012).")
+                x3.metric("Pédalier → dessus de selle (LeMond)", f"{e * 0.883:.1f} cm", help="0,883 × entrejambe, mesuré depuis l'axe du boîtier de pédalier. Repère historique.")
+                st.caption("Ces formules donnent un point de départ. Dans l'étude de Ferrer-Roca et al. (2012), plus de la moitié des cyclistes de haut niveau étaient hors de la plage 106–109 % "
+                           "tout en ayant un angle de genou correct : c'est l'angle du genou qui tranche.")
             else:
                 st.info("Renseignez votre entrejambe dans l'onglet « Mon profil » pour afficher les hauteurs de selle de référence (LeMond, Hamley).")
             d_now = core.hip_ankle_dist(m["knee"], seg)
@@ -925,7 +974,24 @@ with t_main:
             for r in recs:
                 if r["key"] in ("torso", "hip", "shoulder", "elbow"):
                     insight(r)
-            note("Le cockpit se règle avec la potence (longueur, angle) et la hauteur du cintre. Relever le cintre de 10 mm modifie le tronc d'environ 1 à 2°. Ajustez par pas de 10 mm et testez le simulateur avant de modifier votre vélo.")
+            if is_tt:
+                ad = core.aero_details(pts, core.is_facing_right(A["lms"], A["side"]))
+                section("Appuis sur les prolongateurs", "Deux repères propres aux vélos de contre-la-montre et de triathlon. Ce sont des repères de pratique, sans norme publiée : ils n'entrent pas dans le score.")
+                q1, q2 = st.columns(2)
+                ft, ua = ad["forearm_tilt"], ad["upper_arm_fwd"]
+                q1.metric("Inclinaison des avant-bras", f"{ft:+.0f}°", help="0° = avant-bras horizontaux ; valeur positive = mains plus hautes que les coudes.")
+                q1.caption("Repère usuel : de l'horizontale à environ 15° vers le haut. " + ("Dans le repère." if 0 <= ft <= 20 else
+                           ("Mains nettement plus basses que les coudes : le poids glisse vers l'avant, relevez l'extrémité des prolongateurs." if ft < 0 else
+                            "Mains très hautes : position stable, à comparer au règlement de votre fédération si vous courez.")))
+                q2.metric("Coude par rapport à l'épaule", f"{ua:+.0f}°", help="0° = bras vertical (coude sous l'épaule) ; valeur positive = coude en avant de l'épaule.")
+                q2.caption("Repère usuel : coude sous l'épaule ou jusqu'à 15° en avant, pour s'appuyer sur le squelette et non sur les muscles. " + ("Dans le repère." if -3 <= ua <= 18 else
+                           ("Coude en arrière de l'épaule : avancez les accoudoirs." if ua < -3 else "Coude loin devant l'épaule : reculez les accoudoirs.")))
+                extras.append(("Appuis sur les prolongateurs", f"Avant-bras inclinés de {ft:+.0f}° (repère : 0 à 15° vers le haut) ; coude à {ua:+.0f}° de la verticale de l'épaule (repère : 0 à 15° en avant)."))
+            if is_tt:
+                note("Sur un vélo à prolongateurs, le cockpit se règle par la hauteur des accoudoirs (cales sous les appuis), leur avance, et la longueur et l'inclinaison des prolongateurs. "
+                     "Réglez d'abord la hanche (selle), puis descendez les accoudoirs par pas de 5 à 10 mm.")
+            else:
+                note("Le cockpit se règle avec la potence (longueur, angle) et la hauteur du cintre. Relever le cintre de 10 mm modifie le tronc d'environ 1 à 2°. Ajustez par pas de 10 mm et testez le simulateur avant de modifier votre vélo.")
 
         # --- cales, pneus & matériel
         with t_mat:
@@ -1113,7 +1179,7 @@ with t_main:
             st.warning("Cette analyse n'est pas fiable (voir l'avertissement en haut des résultats) : mieux vaut reprendre la photo avant de l'enregistrer dans votre suivi.")
         cur_dict = dict(m=m, score=gscore, annotated=annotated, source=A["source"], quality=quality, ev=ev,
                         extra={**(dict(cadence=round(A["video"]["cadence"], 1), rom=round(A["video"]["rom"], 1)) if A["video"] and not np.isnan(A["video"]["rom"]) else {}),
-                               **({"partial": True} if na_keys else {})})
+                               **({"partial": True} if na_keys else {}), **({"dynamic": True} if dynamic else {})})
         history_section(active, cur_dict, kp="an_")
 
     # ==================================================================== RAPPORT

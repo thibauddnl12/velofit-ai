@@ -193,16 +193,28 @@ def logout():
 #  ABONNEMENT
 # ------------------------------------------------------------------------------
 def subscribe_panel(user: dict, kp: str = "sub_"):
+    """Offres proposées (durée limitée et/ou accès illimité, au choix de l'administrateur) et vérification du paiement."""
     cfg = acc.get_settings()
-    days = acc.setting_int(cfg, "plan_days")
-    st.markdown(f"**{cfg['plan_name']}** — {cfg['plan_price']}")
-    st.caption(f"Analyses illimitées pendant {days} jours à chaque paiement.")
-    url = acc.payment_url(cfg, user["username"], user.get("email", ""))
-    if url:
-        if hasattr(st, "link_button"):
-            st.link_button("S'abonner", url)
-        else:
-            st.markdown(f"[S'abonner]({url})")
+    offs = acc.offers(cfg)
+    if acc.status(user).get("lifetime"):
+        st.success("Vous avez un accès illimité, sans date de fin.")
+        return
+    if not offs:
+        st.info("Aucune offre n'est ouverte pour le moment. Contactez l'administrateur pour activer votre accès.")
+    any_link = False
+    for i, o in enumerate(offs):
+        st.markdown(f"**{o['name']}** — {o['price']}")
+        st.caption("Analyses illimitées, sans date de fin : un seul paiement." if o["kind"] == "life"
+                   else f"Analyses illimitées pendant {o['days']} jours à chaque paiement.")
+        url = acc.payment_url(cfg, user["username"], user.get("email", ""), link=o["link"])
+        if url:
+            any_link = True
+            label = "Choisir l'accès illimité" if o["kind"] == "life" else "Choisir cette offre"
+            if hasattr(st, "link_button"):
+                st.link_button(label, url)
+            else:
+                st.markdown(f"[{label}]({url})")
+    if any_link:
         st.caption("Après le paiement, revenez ici et cliquez sur le bouton ci-dessous.")
         if st.button("J'ai payé : vérifier mon paiement", key=kp + "check", type="primary"):
             with st.spinner("Vérification du paiement…"):
@@ -210,8 +222,8 @@ def subscribe_panel(user: dict, kp: str = "sub_"):
             (st.success if n else st.info)(msg)
             if n:
                 st.rerun()
-    else:
-        st.info("Le paiement en ligne n'est pas encore ouvert. Contactez l'administrateur pour activer votre abonnement.")
+    elif offs:
+        st.info("Le paiement en ligne n'est pas encore ouvert. Contactez l'administrateur pour activer votre accès.")
     if cfg["contact"]:
         st.caption(f"Une question ? {cfg['contact']}")
 
@@ -219,7 +231,7 @@ def subscribe_panel(user: dict, kp: str = "sub_"):
 def paywall(user: dict):
     stt = acc.status(user)
     _H(f"""<div class="glass"><h3 style="margin:0 0 6px;">Vos {stt['free_total']} analyses gratuites sont utilisées</h3>
-    <p style="color:#8b97a8;margin:0;">Abonnez-vous pour continuer à analyser vos photos et vidéos sans limite. Votre historique et vos profils restent accessibles.</p></div>""")
+    <p style="color:#8b97a8;margin:0;">Choisissez une offre pour continuer à analyser vos photos et vidéos sans limite. Votre historique et vos profils restent accessibles.</p></div>""")
     st.write("")
     subscribe_panel(user, "pw_")
 
@@ -229,13 +241,15 @@ def sidebar_box(user: dict):
     st.markdown(f"**{user['username']}**" + ("  ·  administrateur" if stt["is_admin"] else ""))
     if stt["is_admin"]:
         st.caption("Accès illimité.")
+    elif stt["lifetime"]:
+        st.success("Accès illimité, sans date de fin")
     elif stt["sub_active"]:
         st.success(f"Abonnement actif jusqu'au {stt['sub_until']:%d/%m/%Y}")
     else:
         total = max(1, stt["free_total"])
         st.progress(min(1.0, stt["free_left"] / total), text=f"Analyses gratuites restantes : {stt['free_left']} / {stt['free_total']}")
-    if not stt["is_admin"]:
-        with st.expander("Abonnement" if not stt["sub_active"] else "Prolonger"):
+    if not stt["is_admin"] and not stt["lifetime"]:
+        with st.expander("Abonnement" if not stt["sub_active"] else "Prolonger ou passer en illimité"):
             subscribe_panel(user, "sb_")
     has_mail = bool(acc.clean_email(user.get("email")))
     if not has_mail:
@@ -272,7 +286,7 @@ def _users_df(users):
         rows.append({
             "Identifiant": u["username"], "Rôle": u["role"], "Actif": "oui" if u["active"] else "non", "E-mail": u["email"],
             "Créé le": _fmt_date(u["created_at"]), "Dernière connexion": _fmt_date(u["last_login"]),
-            "Gratuites": f"{s['free_used']}/{s['free_total']}", "Abonnement jusqu'au": _fmt_date(u["sub_until"]) if s["sub_active"] else "—",
+            "Gratuites": f"{s['free_used']}/{s['free_total']}", "Abonnement jusqu'au": ("illimité" if s["lifetime"] else _fmt_date(u["sub_until"])) if s["sub_active"] else "—",
             "Analyses": u["n_analyses"],
         })
     return pd.DataFrame(rows)
@@ -325,7 +339,7 @@ def admin_panel(admin: dict):
         stt = acc.status(target)
         is_self = target["username"] == admin["username"]
         st.caption(f"Gratuites : {stt['free_used']}/{stt['free_total']} utilisées · "
-                   f"abonnement : {'jusqu’au ' + stt['sub_until'].strftime('%d/%m/%Y') if stt['sub_active'] else 'aucun'}")
+                   f"abonnement : {'illimité, sans date de fin' if stt['lifetime'] else ('jusqu’au ' + stt['sub_until'].strftime('%d/%m/%Y') if stt['sub_active'] else 'aucun')}")
         b1, b2, b3 = st.columns(3)
         n_add = b1.number_input("Ajouter des analyses gratuites", 1, 1000, 3, key="adm_addn")
         if b1.button("Ajouter", key="adm_add"):
@@ -335,8 +349,9 @@ def admin_panel(admin: dict):
         if b2.button("Activer l'abonnement", key="adm_sub"):
             acc.set_subscription(sel, int(n_days))
             st.rerun()
-        b3.write("")
-        b3.write("")
+        if b3.button("Donner l'accès illimité", key="adm_life", help="Analyses illimitées, sans date de fin."):
+            acc.set_lifetime(sel)
+            st.rerun()
         if b3.button("Retirer l'abonnement", key="adm_unsub"):
             acc.clear_subscription(sel)
             st.rerun()
@@ -407,25 +422,50 @@ def admin_panel(admin: dict):
                     "Le mot de passe habituel de la boîte ne fonctionne pas avec Gmail : il faut le mot de passe d'application. "
                     "Avec un autre fournisseur, utilisez son serveur SMTP (port 587 ou 465).")
 
-    st.markdown("##### Réglages de l'abonnement")
+    st.markdown("##### Offres et tarifs")
+    st.caption("Vous choisissez la formule : un accès pour un nombre de jours de votre choix (30 pour un mois, 365 pour un an…), "
+               "un accès illimité sans date de fin payé une seule fois, ou les deux. Le prix affiché est libre.")
     cfg = acc.get_settings()
     with st.form("adm_settings"):
         s1, s2 = st.columns(2)
         fc = s1.number_input("Analyses gratuites pour les nouveaux comptes", 0, 1000, acc.setting_int(cfg, "free_credits"), key="adm_fc")
         allow = s2.checkbox("Autoriser l'inscription libre", value=cfg["allow_signup"] == "1", key="adm_allow")
+        ct = st.text_input("Contact affiché aux utilisateurs", value=cfg["contact"], key="adm_ct", placeholder="vous@exemple.fr")
+        st.markdown("**Offre 1 · Accès à durée limitée**")
+        pe = st.checkbox("Proposer cette offre", value=cfg["plan_enabled"] == "1", key="adm_pe")
+        s1, s2, s3 = st.columns(3)
         pn = s1.text_input("Nom de l'offre", value=cfg["plan_name"], key="adm_pn")
         pp = s2.text_input("Prix affiché", value=cfg["plan_price"], key="adm_pp")
-        pd_ = s1.number_input("Jours d'accès par paiement", 1, 3650, acc.setting_int(cfg, "plan_days"), key="adm_pd")
-        ct = s2.text_input("Contact affiché aux utilisateurs", value=cfg["contact"], key="adm_ct", placeholder="vous@exemple.fr")
-        pl = st.text_input("Lien de paiement Stripe (Payment Link, paiement unique)", value=cfg["payment_link"], key="adm_pl", placeholder="https://buy.stripe.com/...")
-        pid = st.text_input("Identifiant du lien (facultatif, plink_...)", value=cfg["stripe_link_id"], key="adm_pid")
+        pd_ = s3.number_input("Jours d'accès par paiement", 1, 3650, acc.setting_int(cfg, "plan_days"), key="adm_pd")
+        pl = st.text_input("Lien de paiement Stripe de l'offre 1 (Payment Link, paiement unique)", value=cfg["payment_link"], key="adm_pl", placeholder="https://buy.stripe.com/...")
+        pid = st.text_input("Identifiant du lien de l'offre 1 (plink_..., facultatif)", value=cfg["stripe_link_id"], key="adm_pid")
+        st.markdown("**Offre 2 · Accès illimité, sans date de fin**")
+        le = st.checkbox("Proposer cette offre", value=cfg["life_enabled"] == "1", key="adm_le")
+        s1, s2 = st.columns(2)
+        ln = s1.text_input("Nom de l'offre illimitée", value=cfg["life_name"], key="adm_ln")
+        lp = s2.text_input("Prix affiché de l'offre illimitée", value=cfg["life_price"], key="adm_lp")
+        ll = st.text_input("Lien de paiement Stripe de l'offre 2 (Payment Link, paiement unique)", value=cfg["life_link"], key="adm_ll", placeholder="https://buy.stripe.com/...")
+        lid = st.text_input("Identifiant du lien de l'offre 2 (plink_...)", value=cfg["life_link_id"], key="adm_lid",
+                            help="Obligatoire si les deux offres ont un lien de paiement : il permet de savoir quelle offre a été payée.")
         go = st.form_submit_button("Enregistrer les réglages", type="primary")
     if go:
-        if pl.strip() and not pl.strip().startswith("https://"):
-            st.error("Le lien de paiement doit commencer par https://")
+        pl, ll, pid, lid = pl.strip(), ll.strip(), pid.strip(), lid.strip()
+        if any(x and not x.startswith("https://") for x in (pl, ll)):
+            st.error("Un lien de paiement doit commencer par https://")
+        elif any(x and not x.startswith("plink_") for x in (pid, lid)):
+            st.error("Un identifiant de lien commence par plink_ (il se trouve dans l'adresse de la page du lien, dans Stripe).")
+        elif pe and le and pl and ll and not lid:
+            st.error("Les deux offres ont un lien de paiement : renseignez l'identifiant (plink_...) du lien de l'offre illimitée, "
+                     "sinon un paiement ne peut pas être rattaché à la bonne offre.")
+        elif pe and le and pl and ll and (pl == ll or (pid and pid == lid)):
+            st.error("Les deux offres doivent avoir chacune leur propre lien de paiement.")
+        elif (pe and not pn.strip()) or (le and not ln.strip()):
+            st.error("Donnez un nom à chaque offre proposée.")
         else:
-            for k, v in (("free_credits", int(fc)), ("allow_signup", "1" if allow else "0"), ("plan_name", pn.strip()), ("plan_price", pp.strip()),
-                         ("plan_days", int(pd_)), ("contact", ct.strip()), ("payment_link", pl.strip()), ("stripe_link_id", pid.strip())):
+            for k, v in (("free_credits", int(fc)), ("allow_signup", "1" if allow else "0"), ("contact", ct.strip()),
+                         ("plan_enabled", "1" if pe else "0"), ("plan_name", pn.strip()), ("plan_price", pp.strip()), ("plan_days", int(pd_)),
+                         ("payment_link", pl), ("stripe_link_id", pid),
+                         ("life_enabled", "1" if le else "0"), ("life_name", ln.strip()), ("life_price", lp.strip()), ("life_link", ll), ("life_link_id", lid)):
                 acc.set_setting(k, v)
             st.success("Réglages enregistrés. Le nombre d'analyses gratuites ne s'applique qu'aux nouveaux comptes.")
             st.rerun()
@@ -438,13 +478,15 @@ def admin_panel(admin: dict):
             "3. Ajoutez la clé secrète (`sk_test_...`) dans les secrets : `STRIPE_SECRET_KEY`.\n"
             "4. Testez avec la carte `4242 4242 4242 4242` : après le paiement, l'utilisateur clique sur « J'ai payé » et son abonnement est prolongé.\n"
             "5. Passez ensuite en mode réel avec le lien et la clé `sk_live_...`.\n\n"
-            "Chaque paiement donne le nombre de jours réglé ci-dessus ; l'utilisateur rachète pour renouveler. Un abonnement automatique mensuel demanderait un petit serveur de webhooks (non inclus).")
+            "Offre à durée limitée : chaque paiement donne le nombre de jours réglé ci-dessus ; l'utilisateur rachète pour renouveler. "
+            "Offre illimitée : créez un second lien de paiement unique, au prix voulu ; son identifiant `plink_...` se lit dans l'adresse de la page du lien dans Stripe. "
+            "Un prélèvement automatique chaque mois demanderait un petit serveur de webhooks (non inclus).")
 
     pays = acc.list_payments()
     if pays:
         st.markdown("##### Paiements reçus")
         pdf = pd.DataFrame([{"Date": p["ts"][:16].replace("T", " "), "Compte": p["username"],
-                             "Montant": f"{p['amount'] / 100:.2f} {str(p['currency'] or '').upper()}" if p["amount"] is not None else "—", "Jours": p["days"]} for p in pays])
+                             "Montant": f"{p['amount'] / 100:.2f} {str(p['currency'] or '').upper()}" if p["amount"] is not None else "—", "Accès": "illimité" if p["days"] == acc.LIFETIME_DAYS else f"{p['days']} jours"} for p in pays])
         _stretch(st.dataframe, pdf, hide_index=True)
 
     with st.expander("Sauvegarde et restauration des comptes"):

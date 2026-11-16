@@ -22,9 +22,14 @@ Tous les fichiers `.py` doivent être dans le même dossier que `app.py`.
 2. **Photo ou vidéo** de profil.
 3. **Résultats** : résumé (score, « par où commencer », vélo 3D avec les réglages numérotés, six angles), puis rubriques de détail.
 
+## Sur quoi reposent les mesures
+- Les angles visés sont rattachés à des études publiées quand il en existe (genou : 25–35° de flexion en photo posée, 30–40° en pédalant ; tronc ; hanche F.I.S.T. sur prolongateurs), sinon à des repères de bike-fitters, signalés comme tels. Le détail et les références sont dans l'onglet « Guide » et à la fin du rapport PDF.
+- Disciplines : Route / Endurance, Compétition / Course, Gravel, VTT / XC, Contre-la-montre (prolongateurs), Triathlon (prolongateurs). Sur prolongateurs, la photo se prend en position de course et les conseils portent sur les accoudoirs.
+- La mesure par analyse d'image a une précision d'environ ± 5° par angle : l'outil aide à régler, il ne remplace pas une étude posturale en cabinet.
+
 ## Fonctionnement
 - Chaque compte reçoit N analyses gratuites (réglable, 3 par défaut). Une analyse = un fichier photo ou vidéo ; réafficher le même fichier ne coûte rien.
-- Ensuite : abonnement. Un paiement = X jours d'accès illimité (réglable, 30 par défaut).
+- Ensuite : une offre payante, au choix de l'administrateur (Administration > « Offres et tarifs ») : un accès pour un nombre de jours libre (30, 365…), un accès illimité sans date de fin payé une fois, ou les deux. Le prix affiché est libre.
 - L'administrateur crée des comptes, ajoute des analyses, active/retire un abonnement, réinitialise un mot de passe, désactive ou supprime un compte, et peut fermer l'inscription libre.
 - Les profils, historiques et images de chaque compte sont isolés les uns des autres.
 
@@ -49,7 +54,8 @@ Vérifiez ensuite l'envoi dans Administration > « E-mails (mot de passe oublié
 1. Compte Stripe en **mode test** → Payment Links → lien de **paiement unique** → collez-le dans Administration > Réglages.
 2. Ajoutez `STRIPE_SECRET_KEY = "sk_test_..."` dans les secrets.
 3. L'utilisateur paie via le bouton « S'abonner » (son identifiant est transmis à Stripe), puis clique sur « J'ai payé » : l'application interroge Stripe et prolonge l'abonnement. Chaque paiement n'est compté qu'une fois.
-4. Testez avec la carte `4242 4242 4242 4242`, puis passez en mode réel (`sk_live_...`).
+4. Offre illimitée : créez un second Payment Link (paiement unique) et collez-le dans « Offre 2 », avec son identifiant `plink_...` (visible dans l'adresse de la page du lien dans Stripe) : il sert à rattacher chaque paiement à la bonne offre.
+5. Testez avec la carte `4242 4242 4242 4242`, puis passez en mode réel (`sk_live_...`).
 Sans clé Stripe, vous pouvez activer les abonnements à la main dans l'onglet Administration.
 
 ## Hébergement : où sont stockées les données ?
