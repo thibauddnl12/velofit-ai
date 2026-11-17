@@ -87,7 +87,7 @@ def _forgot_tab(cfg: dict):
                 subject, text, html = mailer.reset_message(user["username"], code, acc.RESET_MINUTES)
                 ok, msg = mailer.send(_secret, user["email"], subject, text, html)
                 if not ok:
-                    print(f"[VeloFit] E-mail de réinitialisation non envoyé : {msg}", flush=True)   # visible dans les journaux du serveur
+                    print(f"[PostureVelo] E-mail de réinitialisation non envoyé : {msg}", flush=True)   # visible dans les journaux du serveur
             st.session_state["rs_ident"] = ident
             # même message que le compte existe ou non : on ne révèle pas qui est inscrit
             st.success(f"Si un compte correspond, un e-mail avec un code à 6 chiffres vient de partir vers l'adresse enregistrée. "
@@ -112,7 +112,7 @@ def _forgot_tab(cfg: dict):
 def _login_page():
     cfg = acc.get_settings()
     free = acc.setting_int(cfg, "free_credits")
-    _H(ui_kit.hero("VeloFit AI Studio", f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité."))
+    _H(ui_kit.hero("PostureVélo", f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité."))
     allow = cfg["allow_signup"] == "1"
     names = ["Connexion"] + (["Créer un compte"] if allow else []) + ["Mot de passe oublié"]
     _l, _mid, _r = st.columns([1, 1.5, 1])
@@ -405,7 +405,7 @@ def admin_panel(admin: dict):
                 st.error("Adresse e-mail invalide.")
             else:
                 with st.spinner("Envoi…"):
-                    ok, msg = mailer.send(_secret, acc.clean_email(dest), "VeloFit AI Studio — e-mail de test",
+                    ok, msg = mailer.send(_secret, acc.clean_email(dest), "PostureVélo — e-mail de test",
                                           "Ceci est un e-mail de test : l'envoi fonctionne, la récupération du mot de passe est active.")
                 (st.success if ok else st.error)(msg + (" Vérifiez la boîte de réception (et les indésirables)." if ok else ""))
     if no_mail:
@@ -492,7 +492,7 @@ def admin_panel(admin: dict):
     with st.expander("Sauvegarde et restauration des comptes"):
         st.caption("Téléchargez régulièrement une sauvegarde : si votre hébergement efface le disque, vous pourrez restaurer vos comptes, abonnements et réglages. "
                    "Les photos et historiques des utilisateurs ne sont pas inclus.")
-        st.download_button("Télécharger la sauvegarde", acc.backup_bytes(), "velofit_comptes.db", "application/octet-stream", key="adm_backup")
+        st.download_button("Télécharger la sauvegarde", acc.backup_bytes(), "posturevelo_comptes.db", "application/octet-stream", key="adm_backup")
         up = st.file_uploader("Restaurer depuis une sauvegarde (.db)", type=["db"], key="adm_restore_file")
         if up is not None:
             sure = st.checkbox("Je confirme : cela remplace tous les comptes actuels.", key="adm_restore_ok")

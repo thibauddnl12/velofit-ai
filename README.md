@@ -1,4 +1,4 @@
-# VeloFit AI Studio — analyse posturale, comptes, essai gratuit et abonnement
+# PostureVélo — étude posturale vélo, comptes, essai gratuit et abonnement
 
 ## Fichiers
 - `app.py` : l'application Streamlit (point d'entrée) : création du profil, analyse, résultats

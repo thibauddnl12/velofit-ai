@@ -1,4 +1,4 @@
-"""Habillage visuel de VeloFit AI Studio : feuille de style, icônes SVG et bandeau d'en-tête.
+"""Habillage visuel de PostureVélo : feuille de style, icônes SVG et bandeau d'en-tête.
 
 Direction artistique « télémétrie » : fond encre, trame de mesure, une seule couleur d'accent
 (jaune « volt »), chiffres en police mono. Le thème est entièrement forcé en CSS : il reste

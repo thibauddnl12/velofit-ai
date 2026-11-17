@@ -17,7 +17,7 @@ import ssl
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
-APP_NAME = "VeloFit AI Studio"
+APP_NAME = "PostureVélo"
 TIMEOUT = 20
 
 
