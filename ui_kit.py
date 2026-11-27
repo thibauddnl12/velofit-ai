@@ -22,50 +22,114 @@ ICONS = {
     "history": f'<svg viewBox="0 0 24 24" {_P}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>',
 }
 
-_HERO_SVG = """
-<svg class="hero-art" viewBox="0 0 420 250" role="img" aria-label="Tableau de mesure des angles">
-  <defs><linearGradient id="sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c6f432" stop-opacity="0"/><stop offset="1" stop-color="#c6f432" stop-opacity=".38"/></linearGradient></defs>
-  <g fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1">
-    <circle cx="120" cy="125" r="100"/><circle cx="120" cy="125" r="74" stroke-dasharray="2 5"/><circle cx="120" cy="125" r="48"/>
-    <path d="M20 125H220M120 25V225"/>
-  </g>
-  <path d="M120.0 25.0L120.0 33.0M128.7 25.4L128.4 29.4M137.4 26.5L136.7 30.5M145.9 28.4L144.8 32.3M154.2 31.0L152.8 34.8M162.3 34.4L160.6 38.0M170.0 38.4L166.0 45.3M177.4 43.1L175.1 46.4M184.3 48.4L181.7 51.5M190.7 54.3L187.9 57.1M196.6 60.7L193.5 63.3M201.9 67.6L198.6 69.9M206.6 75.0L199.7 79.0M210.6 82.7L207.0 84.4M214.0 90.8L210.2 92.2M216.6 99.1L212.7 100.2M218.5 107.6L214.5 108.3M219.6 116.3L215.6 116.6M220.0 125.0L212.0 125.0M219.6 133.7L215.6 133.4M218.5 142.4L214.5 141.7M216.6 150.9L212.7 149.8M214.0 159.2L210.2 157.8M210.6 167.3L207.0 165.6M206.6 175.0L199.7 171.0M201.9 182.4L198.6 180.1M196.6 189.3L193.5 186.7M190.7 195.7L187.9 192.9M184.3 201.6L181.7 198.5M177.4 206.9L175.1 203.6M170.0 211.6L166.0 204.7M162.3 215.6L160.6 212.0M154.2 219.0L152.8 215.2M145.9 221.6L144.8 217.7M137.4 223.5L136.7 219.5M128.7 224.6L128.4 220.6M120.0 225.0L120.0 217.0M111.3 224.6L111.6 220.6M102.6 223.5L103.3 219.5M94.1 221.6L95.2 217.7M85.8 219.0L87.2 215.2M77.7 215.6L79.4 212.0M70.0 211.6L74.0 204.7M62.6 206.9L64.9 203.6M55.7 201.6L58.3 198.5M49.3 195.7L52.1 192.9M43.4 189.3L46.5 186.7M38.1 182.4L41.4 180.1M33.4 175.0L40.3 171.0M29.4 167.3L33.0 165.6M26.0 159.2L29.8 157.8M23.4 150.9L27.3 149.8M21.5 142.4L25.5 141.7M20.4 133.7L24.4 133.4M20.0 125.0L28.0 125.0M20.4 116.3L24.4 116.6M21.5 107.6L25.5 108.3M23.4 99.1L27.3 100.2M26.0 90.8L29.8 92.2M29.4 82.7L33.0 84.4M33.4 75.0L40.3 79.0M38.1 67.6L41.4 69.9M43.4 60.7L46.5 63.3M49.3 54.3L52.1 57.1M55.7 48.4L58.3 51.5M62.6 43.1L64.9 46.4M70.0 38.4L74.0 45.3M77.7 34.4L79.4 38.0M85.8 31.0L87.2 34.8M94.1 28.4L95.2 32.3M102.6 26.5L103.3 30.5M111.3 25.4L111.6 29.4" stroke="rgba(255,255,255,.35)" stroke-width="1" fill="none"/>
-  <g><path d="M120 125L220 125A100 100 0 0 0 170.0 38.4Z" fill="url(#sw)" transform="rotate(0 120 125)"/>
-    <path d="M120 125H220" stroke="#c6f432" stroke-width="1.6"/>
-    <animateTransform attributeName="transform" type="rotate" from="0 120 125" to="360 120 125" dur="8s" repeatCount="indefinite"/></g>
-  <circle class="node" cx="157.0" cy="60.9" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/><circle class="node" cx="189.5" cy="150.3" r="4.5" fill="#06090e" stroke="#5ec8ff" stroke-width="2"/><circle class="node" cx="94.7" cy="194.5" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/><circle class="node" cx="50.5" cy="99.7" r="4.5" fill="#06090e" stroke="#c6f432" stroke-width="2"/>
-  <g font-family="JetBrains Mono, ui-monospace, monospace" text-anchor="middle">
-    <text x="120" y="134" font-size="30" font-weight="600" fill="#eef2f7">82</text>
-    <text x="120" y="152" font-size="9" letter-spacing=".18em" fill="#8b97a8">SCORE / 100</text></g>
-  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" letter-spacing=".08em"><text x="250" y="62" fill="#8b97a8">GENOU</text><text x="410" y="62" fill="#eef2f7" text-anchor="end">147°</text><rect x="250" y="69" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="69" width="99" height="4" rx="2" fill="#c6f432"/><text x="250" y="96" fill="#8b97a8">TRONC</text><text x="410" y="96" fill="#eef2f7" text-anchor="end">44°</text><rect x="250" y="103" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="103" width="64" height="4" rx="2" fill="#c6f432"/><text x="250" y="130" fill="#8b97a8">HANCHE</text><text x="410" y="130" fill="#eef2f7" text-anchor="end">118°</text><rect x="250" y="137" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="137" width="114" height="4" rx="2" fill="#5ec8ff"/><text x="250" y="164" fill="#8b97a8">ÉPAULE</text><text x="410" y="164" fill="#eef2f7" text-anchor="end">92°</text><rect x="250" y="171" width="160" height="4" rx="2" fill="#1a2230"/><rect x="250" y="171" width="88" height="4" rx="2" fill="#c6f432"/></g>
-</svg>"""
-
-
 BRAND = "Axon"
 BRAND_TAGLINE = "Étude posturale vélo"
 
+# ------------------------------------------------------------------------------
+#  LOGO AXON : emblème (cycliste en points articulaires sur un vélo dont le cadre forme un X) et nom dessiné
+# ------------------------------------------------------------------------------
+_EMB_PAL = {
+    "color": dict(frame="url(#axon-x-color)", body="#f4f7fb", wheel="#aeb8c6", ring="#06090e", dim="#6f7a8a",
+                  nodes=["#c6f432", "#7ee98c", "#6fe597", "#49dcbc", "#36d3d6", "#22c5f0"]),
+    "ink": dict(frame="url(#axon-x-ink)", body="#06090e", wheel="#4a5566", ring="#f4f6f8", dim="#8a94a3",
+                nodes=["#4f7d00", "#1f8a52", "#1a885a", "#0f8a7a", "#0c848f", "#0a7fa8"]),
+}
+_EMB_DEFS = ('<defs><linearGradient id="axon-x-color" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="260" y2="0">'
+             '<stop offset="0" stop-color="#c6f432"/><stop offset="0.5" stop-color="#4fe3a8"/><stop offset="1" stop-color="#22c5f0"/></linearGradient>'
+             '<linearGradient id="axon-x-ink" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="260" y2="0">'
+             '<stop offset="0" stop-color="#4f7d00"/><stop offset="0.5" stop-color="#0f8a6a"/><stop offset="1" stop-color="#0a7fa8"/></linearGradient></defs>')
+
+
+def emblem_svg(width=None, mode: str = "color", shade: str = "#1b2530", detail: bool = True, label: bool = True) -> str:
+    """Emblème Axon en SVG (viewBox 300 x 220). mode : "color", "ink" (fond clair) ou "shadow" (une seule teinte `shade`).
+    detail=False : seulement le X et les roues (petites tailles, où le cycliste serait illisible)."""
+    if mode == "shadow":
+        p = dict(frame=shade, body=shade, wheel=shade, ring=shade, dim=shade, nodes=[shade] * 6)
+    else:
+        p = _EMB_PAL.get(mode, _EMB_PAL["color"])
+    n = p["nodes"]
+    size = f' width="{width}" height="{round(width * 220 / 300)}"' if width else ""
+    aria = ' role="img" aria-label="Logo Axon : un cycliste sur un vélo dont le cadre forme un X"' if label else ' aria-hidden="true"'
+    out = [f'<svg viewBox="0 0 300 220"{size}{aria}>', _EMB_DEFS if mode != "shadow" else "",
+           f'<circle cx="70" cy="160" r="46" fill="none" stroke="{p["wheel"]}" stroke-width="5"/>',
+           f'<circle cx="230" cy="160" r="46" fill="none" stroke="{p["wheel"]}" stroke-width="5"/>',
+           f'<polygon points="238.7,30 257.3,30 79.3,160 60.7,160" fill="{p["frame"]}"/>',
+           f'<polygon points="42.7,30 61.3,30 239.3,160 220.7,160" fill="{p["frame"]}" stroke="{p["ring"]}" stroke-width="5" paint-order="stroke"/>']
+    if detail:
+        leg_front = "M95 63L154.2 94.3L145.6 157.7L161 168M168 28L194 58L238 55"
+        torso = "M93 64C114 44 140 31 168 27L180 24"
+        back = "M95 63L135.9 116.1L96.4 166.3L111 176"
+        out += [
+            f'<path d="M70 160L128 170M103.4 174.3L152.6 165.7M146 165.7H159M97 174.3H110M220 52H236Q246 52 246 62V71Q246 77 240 77" fill="none" stroke="{p["wheel"]}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<circle cx="128" cy="170" r="13" fill="none" stroke="{p["wheel"]}" stroke-width="4"/>',
+            f'<path d="{back}" fill="none" stroke="{p["ring"]}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<path d="{back}" fill="none" stroke="{p["dim"]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<path d="{leg_front}" fill="none" stroke="{p["ring"]}" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<path d="{torso}" fill="none" stroke="{p["ring"]}" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<path d="{leg_front}" fill="none" stroke="{p["body"]}" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<path d="{torso}" fill="none" stroke="{p["body"]}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>',
+            f'<circle cx="189" cy="22" r="9.5" fill="{p["body"]}" stroke="{p["ring"]}" stroke-width="3"/>',
+            f'<path d="M176 19C175 6 197 1 205 14L200 16.5C193 14 184 16 176 19Z" fill="{n[5]}" stroke="{p["ring"]}" stroke-width="2.5" stroke-linejoin="round"/>',
+        ]
+        for (x, y), c in zip([(95, 63), (145.6, 157.7), (154.2, 94.3), (168, 28), (194, 58), (238, 55)], n):
+            out.append(f'<circle cx="{x}" cy="{y}" r="6" fill="{c}" stroke="{p["ring"]}" stroke-width="2.5"/>')
+    out += [f'<circle cx="70" cy="160" r="6.5" fill="{n[0]}" stroke="{p["ring"]}" stroke-width="2.5"/>',
+            f'<circle cx="230" cy="160" r="6.5" fill="{n[5]}" stroke="{p["ring"]}" stroke-width="2.5"/>', "</svg>"]
+    return "".join(out)
+
+
+def wordmark_svg(height: int = 48, mode: str = "color") -> str:
+    """Le nom AXON dessiné : A sans barre (petit trait en dégradé), X en deux bandes entrelacées, O carré arrondi, N géométrique."""
+    ink, accent, bg = {"color": ("#f4f7fb", "url(#axon-word-color)", "#06090e"),
+                       "ink": ("#06090e", "url(#axon-word-ink)", "#f4f6f8")}.get(mode, ("#f4f7fb", "url(#axon-word-color)", "#06090e"))
+    w = round(height * 476 / 100)
+    return (f'<svg class="axon-word" viewBox="0 0 476 100" width="{w}" height="{height}" role="img" aria-label="AXON">'
+            '<defs><linearGradient id="axon-word-color" gradientUnits="userSpaceOnUse" x1="120" y1="0" x2="232" y2="0">'
+            '<stop offset="0" stop-color="#c6f432"/><stop offset="1" stop-color="#22c5f0"/></linearGradient>'
+            '<linearGradient id="axon-word-ink" gradientUnits="userSpaceOnUse" x1="120" y1="0" x2="232" y2="0">'
+            '<stop offset="0" stop-color="#4f7d00"/><stop offset="1" stop-color="#0a7fa8"/></linearGradient></defs>'
+            f'<polygon points="0,100 40,0 64,0 104,100 80,100 52,30 24,100" fill="{ink}"/>'
+            f'<rect x="38" y="66" width="28" height="11" fill="{accent}"/>'
+            f'<polygon points="206,0 232,0 146,100 120,100" fill="{accent}"/>'
+            f'<polygon points="120,0 146,0 232,100 206,100" fill="{accent}" stroke="{bg}" stroke-width="5" paint-order="stroke"/>'
+            '<path d="M280 0H324Q354 0 354 30V70Q354 100 324 100H280Q250 100 250 70V30Q250 0 280 0ZM286 22Q272 22 272 36V64Q272 78 286 78H318Q332 78 332 64V36Q332 22 318 22Z" '
+            f'fill="{ink}" fill-rule="evenodd"/>'
+            f'<polygon points="372,100 372,0 396,0 452,64 452,0 474,0 474,100 450,100 394,36 394,100" fill="{ink}"/></svg>')
+
+
+def emblem_3d(layers: int = 11, depth: float = 18.0) -> str:
+    """Emblème en relief qui tourne sur lui-même (CSS 3D, sans JavaScript) : copies empilées en profondeur,
+    en couleur devant et derrière, en teintes sombres entre les deux."""
+    parts = []
+    for i in range(layers):
+        t = i / (layers - 1)
+        z = (t - 0.5) * depth
+        edge = i in (0, layers - 1)
+        light = round(18 + 22 * abs(t - 0.5) * 2)
+        svg = emblem_svg(None, "color" if edge else "shadow", f"hsl(205,22%,{light}%)", label=(i == layers - 1))
+        parts.append(f'<div class="ly" style="transform:translateZ({z:.1f}px)">{svg}</div>')
+    return f'<div class="emb3d"><div class="spin">{"".join(parts)}</div></div>'
+
 
 def logo_mark(size: int = 40) -> str:
-    """Symbole Axon : un « A » formé par un angle mesuré (deux segments, arc de mesure, articulation au sommet)."""
-    return (f'<svg class="axon-mark" width="{size}" height="{size}" viewBox="0 0 48 48" role="img" aria-label="{BRAND}">'
-            '<rect width="48" height="48" rx="12" fill="#c6f432"/>'
-            '<path d="M11 38L24 10L37 38" fill="none" stroke="#06090e" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>'
-            '<path d="M17.2 29.6A10 10 0 0 1 30.8 29.6" fill="none" stroke="#06090e" stroke-width="3" stroke-linecap="round"/>'
-            '<circle cx="24" cy="10" r="3.6" fill="#c6f432" stroke="#06090e" stroke-width="2.6"/></svg>')
+    """Petit symbole (en-tête, barre latérale) : l'emblème simplifié (X et roues) sur une tuile sombre."""
+    return (f'<span class="axon-mark" style="width:{size}px;height:{size}px">'
+            f'{emblem_svg(round(size * 0.9), detail=False, label=False)}</span>')
 
 
 def logo(size: str = "lg", tagline: bool = True) -> str:
-    """Logo complet (symbole + nom). size = "lg" (page de connexion), "md" (en-tête) ou "sm" (barre latérale)."""
-    px = {"lg": 64, "md": 40, "sm": 30}[size]
+    """Logo complet (symbole + nom dessiné). size = "lg", "md" ou "sm"."""
+    px, word = {"lg": (64, 44), "md": (40, 28), "sm": (32, 20)}[size]
     tag = f'<span class="axon-tag">{_esc.escape(BRAND_TAGLINE)}</span>' if tagline else ""
-    return (f'<div class="axon-logo {size}">{logo_mark(px)}<div class="axon-words">'
-            f'<span class="axon-name">{_esc.escape(BRAND.upper())}</span>{tag}</div></div>')
+    return (f'<div class="axon-logo {size}" role="img" aria-label="{BRAND}">{logo_mark(px)}<div class="axon-words">'
+            f'{wordmark_svg(word)}{tag}</div></div>')
 
 
 def hero(title: str, text: str, badge: str = "", brand: bool = False) -> str:
     """Bandeau d'en-tête (HTML sur une ligne, prêt pour st.markdown). brand=True : le logo Axon remplace le titre."""
     top = f'<span class="hero-badge"><i></i>{badge}</span>' if badge else ""
-    head = f'<div class="hero-logo">{logo("lg")}</div>' if brand else f"<h1>{title}</h1>"
+    head = (f'<div class="hero-word">{wordmark_svg(72)}<span class="axon-tag">{_esc.escape(BRAND_TAGLINE)}</span></div>'
+            if brand else f"<h1>{title}</h1>")
     html = f"""
     <div class="hero">
       <div class="hero-txt">
@@ -73,7 +137,7 @@ def hero(title: str, text: str, badge: str = "", brand: bool = False) -> str:
         {head}
         <p>{text}</p>
       </div>
-      <div class="hero-vis">{_HERO_SVG}</div>
+      <div class="hero-vis">{emblem_3d()}</div>
     </div>"""
     return re.sub(r"\s*\n\s*", " ", html.strip())
 
@@ -91,7 +155,7 @@ def appbar(brand: str, tagline: str = "", who: str = "") -> str:
     return _one(f"""
     <div class="appbar">
       <div class="brand">{logo_mark(38)}
-        <div><div class="name">{_esc.escape(brand)}</div><div class="tag">{_esc.escape(tagline)}</div></div></div>
+        <div><div class="name">{wordmark_svg(26) if brand == BRAND else _esc.escape(brand)}</div><div class="tag">{_esc.escape(tagline)}</div></div></div>
       {w}
     </div>""")
 
@@ -290,17 +354,28 @@ a{color:var(--acc);}
 /* ---------- en-tête compact, étapes, titres de section ---------- */
 .appbar{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin:0 0 16px;}
 .appbar .brand{display:flex; align-items:center; gap:12px; min-width:0;}
-.appbar .axon-mark{flex:0 0 38px; display:block;}
+.appbar .axon-mark{flex:0 0 38px;}
 
 /* ---------- logo Axon ---------- */
 .axon-logo{display:flex; align-items:center; gap:14px;}
-.axon-logo .axon-mark{flex:0 0 auto; display:block;}
+.axon-mark{display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; border-radius:22%; background:#111823; border:1px solid rgba(255,255,255,.12); box-sizing:border-box;}
+.axon-mark svg{display:block;}
+.axon-word{display:block; height:auto;}
+.hero-word{display:flex; flex-direction:column; gap:14px; margin:6px 0 20px;}
+.hero-word .axon-word{width:min(100%, 340px);}
+.hero-word .axon-tag{font-size:.82rem; letter-spacing:.32em; color:#c9d2de; margin-top:0;}
+/* emblème en relief qui tourne sur lui-même */
+.emb3d{perspective:1000px; display:flex; align-items:center; justify-content:center; padding:10px 0;}
+.emb3d .spin{position:relative; width:min(100%, 400px); aspect-ratio:300 / 220; transform-style:preserve-3d; animation:axspin 9s linear infinite;}
+.emb3d .ly{position:absolute; inset:0;}
+.emb3d .ly svg{width:100%; height:100%; display:block;}
+@keyframes axspin{from{transform:rotateX(-8deg) rotateY(0deg)} to{transform:rotateX(-8deg) rotateY(360deg)}}
+@media (prefers-reduced-motion:reduce){.emb3d .spin{animation:none; transform:rotateX(-8deg) rotateY(-20deg);}}
 .axon-words{display:flex; flex-direction:column; line-height:1;}
 .axon-name{font-family:var(--head); font-weight:700; letter-spacing:.14em; color:var(--txt);}
 .axon-tag{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--acc); margin-top:7px;}
-.axon-logo.lg .axon-name{font-size:3rem;} .axon-logo.lg{gap:18px;}
-.axon-logo.md .axon-name{font-size:1.6rem;}
-.axon-logo.sm .axon-name{font-size:1.15rem;} .axon-logo.sm .axon-tag{font-size:.6rem; margin-top:4px;} .axon-logo.sm{gap:10px; margin:2px 0 6px;}
+.axon-logo.lg{gap:18px;} .axon-logo.md{gap:12px;}
+.axon-logo.sm .axon-tag{font-size:.6rem; margin-top:6px;} .axon-logo.sm{gap:10px; margin:2px 0 6px;}
 .hero-logo{margin:4px 0 18px;}
 
 /* ---------- nous contacter ---------- */
@@ -465,7 +540,8 @@ a{color:var(--acc);}
   :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) button[role="tab"]{padding:8px 13px; font-size:.9rem;}
   :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) [data-baseweb="tab-list"]{flex-wrap:nowrap !important; overflow-x:auto; gap:2px;}
   .appbar .name{font-size:1.25rem;} .appbar .who{display:none;}
-  .axon-logo.lg .axon-name{font-size:2.2rem;} .axon-logo.lg .axon-mark{width:50px; height:50px;} .axon-logo.lg{gap:14px;}
+  .hero-word .axon-word{width:min(100%, 260px);} .hero-word{margin-bottom:14px;}
+  .emb3d .spin{width:min(100%, 300px);}
   .contact{padding:16px;} .contact .ct-mail{font-size:.95rem;}
   .steps{grid-template-columns:1fr; gap:6px; margin-bottom:16px;}
   .stp{padding:9px 12px;}
