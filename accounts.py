@@ -113,7 +113,10 @@ def _db():
             con.execute("ROLLBACK")
         raise
     finally:
+        changed = con.total_changes > 0
         con.close()
+        if changed:
+            core.notify_change()          # sauvegarde automatique (si elle est configurée)
 
 
 def _hash(password: str, salt: bytes, iters: int) -> str:
@@ -362,6 +365,7 @@ def delete_user(username, delete_data=True):
         con.execute("DELETE FROM resets WHERE username=?", (u,))
     if delete_data:
         shutil.rmtree(core.DATA_DIR / "users" / core.safe_name(u), ignore_errors=True)
+        core.notify_change()
 
 
 def ensure_admin(username, password, email=""):
@@ -674,6 +678,7 @@ def restore_from_bytes(data: bytes):
             except OSError:
                 pass
         shutil.copyfile(tmp, dest)
+        core.notify_change()
         return True, f"Sauvegarde restaurée ({n_users} comptes)."
     finally:
         try:

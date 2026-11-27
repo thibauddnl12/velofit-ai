@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 import accounts as acc
+import cloud_store
 import mailer
 import ui_kit
 
@@ -56,6 +57,58 @@ def _mail_ready() -> bool:
     return mailer.is_configured(_secret)
 
 
+def contact_email() -> str:
+    return mailer.contact_email(_secret)
+
+
+_CONTACT_LOG: list = []        # heures d'envoi du formulaire de contact (tous visiteurs confondus), contre les abus
+CONTACT_MAX_SESSION = 3        # messages par visite
+CONTACT_MAX_HOUR = 20          # messages par heure pour tout le site
+
+
+def contact_tab(user: dict | None = None, kp: str = "ct_"):
+    """Onglet « Nous contacter » : adresse cliquable et, si l'envoi d'e-mails est configuré, un formulaire."""
+    dest = contact_email()
+    _H(ui_kit.contact_card(dest))
+    if not _mail_ready():
+        st.caption("Cliquez sur l'adresse pour ouvrir votre messagerie, ou copiez-la dans un nouvel e-mail.")
+        return
+    _H(ui_kit.form_section("Ou envoyez-nous un message ici", "Nous vous répondrons à l'adresse e-mail indiquée."))
+    with st.form(kp + "form", clear_on_submit=False):
+        c1, c2 = st.columns(2)
+        name = c1.text_input("Votre nom", value=(user or {}).get("username", ""), key=kp + "name")
+        mail = c2.text_input("Votre adresse e-mail", value=(user or {}).get("email", ""), key=kp + "mail")
+        topic = st.selectbox("Sujet", ["Question sur une analyse", "Compte ou mot de passe", "Abonnement ou paiement", "Suggestion", "Autre"], key=kp + "topic")
+        body = st.text_area("Votre message", height=160, key=kp + "body")
+        go = st.form_submit_button("Envoyer le message", type="primary")
+    if not go:
+        return
+    import time as _t
+    nowt = _t.time()
+    _CONTACT_LOG[:] = [x for x in _CONTACT_LOG if nowt - x < 3600]
+    sent = st.session_state.get(kp + "sent", 0)
+    mail, body, name = (mail or "").strip(), (body or "").strip(), (name or "").strip()[:80]
+    if not acc.EMAIL_RE.match(mail):
+        st.error("Indiquez une adresse e-mail valide : c'est là que nous vous répondrons.")
+    elif len(body) < 10:
+        st.error("Votre message est un peu court : décrivez votre demande en quelques mots.")
+    elif len(body) > 4000:
+        st.error("Votre message est trop long (4 000 caractères au maximum).")
+    elif sent >= CONTACT_MAX_SESSION or len(_CONTACT_LOG) >= CONTACT_MAX_HOUR:
+        st.warning(f"Trop de messages envoyés pour le moment. Écrivez-nous directement à {dest}.")
+    else:
+        who = f"{name} <{mail}>" + (f" — compte « {user['username']} »" if user else " — visiteur non connecté")
+        text = f"Message envoyé depuis le formulaire de contact {mailer.APP_NAME}.\n\nDe : {who}\nSujet : {topic}\n\n{body}\n"
+        ok, msg = mailer.send(_secret, dest, f"[{mailer.APP_NAME}] {topic}", text, reply_to=mail)
+        if ok:
+            _CONTACT_LOG.append(nowt)
+            st.session_state[kp + "sent"] = sent + 1
+            st.success("Message envoyé, merci ! Nous vous répondrons à l'adresse indiquée.")
+        else:
+            print(f"[Axon] Formulaire de contact non envoyé : {msg}", flush=True)
+            st.error(f"Le message n'a pas pu partir. Écrivez-nous directement à {dest}.")
+
+
 # ------------------------------------------------------------------------------
 #  CONNEXION
 # ------------------------------------------------------------------------------
@@ -78,7 +131,7 @@ def _forgot_tab(cfg: dict):
         ident = (ident or "").strip()
         if not _mail_ready():
             st.warning("L'envoi d'e-mails n'est pas encore activé sur ce site. Demandez à l'administrateur de réinitialiser votre mot de passe."
-                       + (f" Contact : {cfg['contact']}" if cfg.get("contact") else ""))
+                       + f" Contact : {cfg.get('contact') or contact_email()}")
         elif not ident:
             st.error("Indiquez votre identifiant ou votre adresse e-mail.")
         else:
@@ -87,7 +140,7 @@ def _forgot_tab(cfg: dict):
                 subject, text, html = mailer.reset_message(user["username"], code, acc.RESET_MINUTES)
                 ok, msg = mailer.send(_secret, user["email"], subject, text, html)
                 if not ok:
-                    print(f"[PostureVelo] E-mail de réinitialisation non envoyé : {msg}", flush=True)   # visible dans les journaux du serveur
+                    print(f"[Axon] E-mail de réinitialisation non envoyé : {msg}", flush=True)   # visible dans les journaux du serveur
             st.session_state["rs_ident"] = ident
             # même message que le compte existe ou non : on ne révèle pas qui est inscrit
             st.success(f"Si un compte correspond, un e-mail avec un code à 6 chiffres vient de partir vers l'adresse enregistrée. "
@@ -112,10 +165,10 @@ def _forgot_tab(cfg: dict):
 def _login_page():
     cfg = acc.get_settings()
     free = acc.setting_int(cfg, "free_credits")
-    _H(ui_kit.hero("PostureVélo", f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité."))
+    _H(ui_kit.hero(ui_kit.BRAND, f"Connectez-vous pour analyser votre position. Chaque nouveau compte reçoit <b>{free} analyses gratuites</b> ; au-delà, un abonnement donne un accès illimité.", brand=True))
     allow = cfg["allow_signup"] == "1"
-    names = ["Connexion"] + (["Créer un compte"] if allow else []) + ["Mot de passe oublié"]
-    _l, _mid, _r = st.columns([1, 1.5, 1])
+    names = ["Connexion"] + (["Créer un compte"] if allow else []) + ["Mot de passe oublié", "Nous contacter"]
+    _l, _mid, _r = st.columns([0.6, 2, 0.6])
     with _mid:
         tabs = st.tabs(names)
     with tabs[0]:
@@ -154,12 +207,20 @@ def _login_page():
                         st.rerun()
                     else:
                         st.error(msg)
-    with tabs[-1]:
+    with tabs[-2]:
         _forgot_tab(cfg)
+    with tabs[-1]:
+        contact_tab(None, "ctl_")
 
 
 def gate():
     """Retourne l'utilisateur connecté (dict). Sinon affiche la page de connexion et arrête le script."""
+    # 1. rapatrier les comptes sauvegardés AVANT toute lecture de la base (sinon un redémarrage repartirait d'une base vide)
+    if cloud_store.is_configured(_secret) and cloud_store.status()["mode"] != "ready":
+        with st.spinner("Chargement des comptes…"):
+            cloud_store.start(_secret)
+    else:
+        cloud_store.start(_secret)
     a_user, a_pw = _secret("ADMIN_USERNAME"), _secret("ADMIN_PASSWORD")
     if a_user and a_pw:
         ok, msg = _bootstrap_admin(a_user, a_pw, _secret("ADMIN_EMAIL"))
@@ -224,8 +285,7 @@ def subscribe_panel(user: dict, kp: str = "sub_"):
                 st.rerun()
     elif offs:
         st.info("Le paiement en ligne n'est pas encore ouvert. Contactez l'administrateur pour activer votre accès.")
-    if cfg["contact"]:
-        st.caption(f"Une question ? {cfg['contact']}")
+    st.caption(f"Une question ? {cfg['contact'] or contact_email()}")
 
 
 def paywall(user: dict):
@@ -273,6 +333,8 @@ def sidebar_box(user: dict):
             (st.success if ok else st.error)(msg)
     if st.button("Se déconnecter", key="logout_btn"):
         logout()
+    _mail = contact_email()
+    _H(f'<div class="side-contact">Une question ? <a href="mailto:{_mail}">{_mail}</a></div>')
     st.caption("Votre analyse n'est comptée qu'une fois par fichier : la réafficher ne coûte rien.")
 
 
@@ -296,6 +358,14 @@ def admin_panel(admin: dict):
     if admin.get("role") != "admin":  # garde-fou : ne jamais afficher à un non-administrateur
         st.error("Accès réservé à l'administrateur.")
         return
+    cs = cloud_store.status()
+    if cs["mode"] == "off":
+        st.error("Les comptes ne sont pas sauvegardés : ils seront effacés au prochain redémarrage de l'application. "
+                 "Activez la sauvegarde automatique (rubrique « Sauvegarde automatique » plus bas).")
+    elif cs["mode"] == "error":
+        st.error(cs["message"])
+    elif cs["last_error"]:
+        st.warning(f"Dernier envoi de la sauvegarde automatique en échec, nouvel essai en cours : {cs['last_error']}")
     stats = acc.stats()
     c = st.columns(5)
     c[0].metric("Comptes", stats["users"])
@@ -405,7 +475,7 @@ def admin_panel(admin: dict):
                 st.error("Adresse e-mail invalide.")
             else:
                 with st.spinner("Envoi…"):
-                    ok, msg = mailer.send(_secret, acc.clean_email(dest), "PostureVélo — e-mail de test",
+                    ok, msg = mailer.send(_secret, acc.clean_email(dest), "Axon — e-mail de test",
                                           "Ceci est un e-mail de test : l'envoi fonctionne, la récupération du mot de passe est active.")
                 (st.success if ok else st.error)(msg + (" Vérifiez la boîte de réception (et les indésirables)." if ok else ""))
     if no_mail:
@@ -489,10 +559,32 @@ def admin_panel(admin: dict):
                              "Montant": f"{p['amount'] / 100:.2f} {str(p['currency'] or '').upper()}" if p["amount"] is not None else "—", "Accès": "illimité" if p["days"] == acc.LIFETIME_DAYS else f"{p['days']} jours"} for p in pays])
         _stretch(st.dataframe, pdf, hide_index=True)
 
-    with st.expander("Sauvegarde et restauration des comptes"):
+    st.markdown("##### Sauvegarde automatique")
+    if cs["mode"] == "ready":
+        last = cs["last_push"].strftime("%d/%m/%Y à %H:%M:%S") if cs["last_push"] else "aucun envoi depuis le démarrage (rien de nouveau)"
+        st.success(f"Active. Les comptes, profils et historiques sont copiés dans le dépôt privé après chaque modification, "
+                   f"et rechargés à chaque redémarrage. Dernier envoi : {last}. Fichiers sauvegardés : {cs['files']}.")
+        if st.button("Sauvegarder maintenant", key="adm_cloud_now"):
+            try:
+                n = cloud_store.flush()
+                st.success(f"Sauvegarde envoyée ({n} fichier(s) mis à jour)." if n else "Tout est déjà sauvegardé.")
+            except Exception as exc:
+                st.error(f"Envoi impossible : {exc}")
+    else:
+        st.markdown(
+            "Sur Streamlit Community Cloud, le disque est effacé à chaque redémarrage. Pour garder les comptes, ils sont copiés dans un "
+            "**dépôt GitHub privé** :\n\n"
+            "1. Sur GitHub, créez un dépôt **privé** nommé par exemple `axon-data`, en cochant « Add a README file ».\n"
+            "2. Créez un jeton : Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token. "
+            "Choisissez « Only select repositories » → `axon-data`, puis Permissions → **Contents : Read and write**. Copiez le jeton.\n"
+            "3. Dans les Secrets de l'application, ajoutez :\n"
+            "```toml\nDATA_REPO = \"votre-compte/axon-data\"\nDATA_TOKEN = \"github_pat_...\"\n```\n"
+            "4. Redémarrez l'application (Reboot app).\n\n"
+            "Le dépôt contient les photos des utilisateurs : il doit rester **privé**.")
+    with st.expander("Sauvegarde et restauration manuelles des comptes"):
         st.caption("Téléchargez régulièrement une sauvegarde : si votre hébergement efface le disque, vous pourrez restaurer vos comptes, abonnements et réglages. "
                    "Les photos et historiques des utilisateurs ne sont pas inclus.")
-        st.download_button("Télécharger la sauvegarde", acc.backup_bytes(), "posturevelo_comptes.db", "application/octet-stream", key="adm_backup")
+        st.download_button("Télécharger la sauvegarde", acc.backup_bytes(), "axon_comptes.db", "application/octet-stream", key="adm_backup")
         up = st.file_uploader("Restaurer depuis une sauvegarde (.db)", type=["db"], key="adm_restore_file")
         if up is not None:
             sure = st.checkbox("Je confirme : cela remplace tous les comptes actuels.", key="adm_restore_ok")

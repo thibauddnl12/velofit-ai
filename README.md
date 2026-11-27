@@ -1,4 +1,4 @@
-# PostureVélo — étude posturale vélo, comptes, essai gratuit et abonnement
+# Axon — étude posturale vélo, comptes, essai gratuit et abonnement
 
 ## Fichiers
 - `app.py` : l'application Streamlit (point d'entrée) : création du profil, analyse, résultats
@@ -7,7 +7,8 @@
 - `ui_kit.py` : feuille de style et composants visuels
 - `accounts.py` : comptes, mots de passe hachés, codes de réinitialisation, quotas, abonnements, paiements Stripe
 - `auth_ui.py` : connexion, mot de passe oublié, abonnement et administration
-- `mailer.py` : envoi des e-mails (SMTP)
+- `mailer.py` : envoi des e-mails (SMTP) et adresse « Nous contacter »
+- `cloud_store.py` : sauvegarde automatique des données dans un dépôt GitHub privé (comptes conservés après un redémarrage)
 - `requirements.txt`, `packages.txt`, `secrets.toml.example`, `.gitignore`, `.streamlit/config.toml`
 
 Tous les fichiers `.py` doivent être dans le même dossier que `app.py`.
@@ -59,13 +60,27 @@ Vérifiez ensuite l'envoi dans Administration > « E-mails (mot de passe oublié
 Sans clé Stripe, vous pouvez activer les abonnements à la main dans l'onglet Administration.
 
 ## Hébergement : où sont stockées les données ?
-Les comptes sont dans `velofit_data/accounts.db` (SQLite). Sur **Streamlit Community Cloud**, le disque est **éphémère** : comptes, abonnements et historiques sont perdus à chaque redémarrage ou redéploiement. Pour un vrai service payant, hébergez l'application là où un disque persistant est disponible (VPS, Render/Railway/Fly.io avec volume) et pointez la variable d'environnement `VELOFIT_DATA` vers ce volume. Sinon, utilisez la version Cloud uniquement pour une démonstration.
+Les comptes sont dans `velofit_data/accounts.db` (SQLite), les profils et historiques dans `velofit_data/users/`. Sur **Streamlit Community Cloud**, le disque est **effacé à chaque redémarrage**.
+
+**Sauvegarde automatique (recommandée)** : après chaque modification, les données sont copiées dans un dépôt GitHub **privé**, puis rechargées au démarrage.
+1. Créez un dépôt **privé** `axon-data` (cochez « Add a README file »).
+2. Créez un jeton GitHub *fine-grained* limité à ce dépôt, avec la permission **Contents : Read and write**.
+3. Ajoutez dans les secrets de l'application :
+```toml
+DATA_REPO = "votre-compte/axon-data"
+DATA_TOKEN = "github_pat_..."
+```
+4. Redémarrez l'application. L'onglet Administration indique « Sauvegarde automatique : active ».
+
+Si GitHub est injoignable au démarrage, l'envoi est suspendu (pour ne jamais écraser la sauvegarde par une base vide) et l'administrateur voit un avertissement. Ne mettez pas ces deux secrets dans votre `secrets.toml` local : votre copie locale serait mélangée à celle du site en ligne. Le jeton expire à la date choisie à sa création : renouvelez-le avant.
+
+Autre solution : un hébergement avec disque persistant (Render, VPS), en pointant `VELOFIT_DATA` vers ce disque.
 
 ## Mise en ligne
 ### A. Démonstration gratuite : Streamlit Community Cloud
 1. Poussez les fichiers sur un dépôt GitHub (`.gitignore` exclut secrets et données).
 2. share.streamlit.io > « Create app » > choisissez le dépôt et `app.py`. « Advanced settings » : Python 3.11 ou 3.12, puis collez les secrets (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL`, `SMTP_...`, `STRIPE_SECRET_KEY`).
-3. Le disque est éphémère : téléchargez régulièrement la sauvegarde (Administration > Sauvegarde) et restaurez-la après un redémarrage.
+3. Le disque est éphémère : activez la sauvegarde automatique (ci-dessus). La sauvegarde manuelle (Administration) reste disponible en secours.
 
 ### B. Service réel avec abonnements : Render (disque persistant)
 1. Dépôt GitHub comme ci-dessus (ajoutez `render.yaml`).

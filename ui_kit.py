@@ -1,4 +1,4 @@
-"""Habillage visuel de PostureVélo : feuille de style, icônes SVG et bandeau d'en-tête.
+"""Habillage visuel de Axon : feuille de style, icônes SVG et bandeau d'en-tête.
 
 Direction artistique « télémétrie » : fond encre, trame de mesure, une seule couleur d'accent
 (jaune « volt »), chiffres en police mono. Le thème est entièrement forcé en CSS : il reste
@@ -41,13 +41,36 @@ _HERO_SVG = """
 </svg>"""
 
 
-def hero(title: str, text: str, badge: str = "Analyse biomécanique par IA") -> str:
-    """Bandeau d'en-tête (HTML sur une ligne, prêt pour st.markdown)."""
+BRAND = "Axon"
+BRAND_TAGLINE = "Étude posturale vélo"
+
+
+def logo_mark(size: int = 40) -> str:
+    """Symbole Axon : un « A » formé par un angle mesuré (deux segments, arc de mesure, articulation au sommet)."""
+    return (f'<svg class="axon-mark" width="{size}" height="{size}" viewBox="0 0 48 48" role="img" aria-label="{BRAND}">'
+            '<rect width="48" height="48" rx="12" fill="#c6f432"/>'
+            '<path d="M11 38L24 10L37 38" fill="none" stroke="#06090e" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>'
+            '<path d="M17.2 29.6A10 10 0 0 1 30.8 29.6" fill="none" stroke="#06090e" stroke-width="3" stroke-linecap="round"/>'
+            '<circle cx="24" cy="10" r="3.6" fill="#c6f432" stroke="#06090e" stroke-width="2.6"/></svg>')
+
+
+def logo(size: str = "lg", tagline: bool = True) -> str:
+    """Logo complet (symbole + nom). size = "lg" (page de connexion), "md" (en-tête) ou "sm" (barre latérale)."""
+    px = {"lg": 64, "md": 40, "sm": 30}[size]
+    tag = f'<span class="axon-tag">{_esc.escape(BRAND_TAGLINE)}</span>' if tagline else ""
+    return (f'<div class="axon-logo {size}">{logo_mark(px)}<div class="axon-words">'
+            f'<span class="axon-name">{_esc.escape(BRAND.upper())}</span>{tag}</div></div>')
+
+
+def hero(title: str, text: str, badge: str = "", brand: bool = False) -> str:
+    """Bandeau d'en-tête (HTML sur une ligne, prêt pour st.markdown). brand=True : le logo Axon remplace le titre."""
+    top = f'<span class="hero-badge"><i></i>{badge}</span>' if badge else ""
+    head = f'<div class="hero-logo">{logo("lg")}</div>' if brand else f"<h1>{title}</h1>"
     html = f"""
     <div class="hero">
       <div class="hero-txt">
-        <span class="hero-badge"><i></i>{badge}</span>
-        <h1>{title}</h1>
+        {top}
+        {head}
         <p>{text}</p>
       </div>
       <div class="hero-vis">{_HERO_SVG}</div>
@@ -67,7 +90,7 @@ def appbar(brand: str, tagline: str = "", who: str = "") -> str:
     w = f'<div class="who">{who}</div>' if who else ""
     return _one(f"""
     <div class="appbar">
-      <div class="brand"><div class="logo">{ICONS['target']}</div>
+      <div class="brand">{logo_mark(38)}
         <div><div class="name">{_esc.escape(brand)}</div><div class="tag">{_esc.escape(tagline)}</div></div></div>
       {w}
     </div>""")
@@ -81,6 +104,18 @@ def stepper(steps) -> str:
         out.append(f'<div class="stp {state}"><div class="n">{mark}</div><div class="x"><div class="t">{_esc.escape(title)}</div>'
                    f'<div class="d">{_esc.escape(detail)}</div></div></div>')
     return '<div class="steps">' + "".join(out) + "</div>"
+
+
+_MAIL_ICON = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+              '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/></svg>')
+
+
+def contact_card(email: str) -> str:
+    """Encart « Nous contacter » avec l'adresse cliquable."""
+    e = _esc.escape(email)
+    return (f'<div class="contact"><div class="ct-h">Nous contacter</div>'
+            f'<p>Une question sur une analyse, votre compte ou un abonnement ? Écrivez-nous à cette adresse.</p>'
+            f'<a class="ct-mail" href="mailto:{e}">{_MAIL_ICON}<span>{e}</span></a></div>')
 
 
 def section(title: str, sub: str = "", first: bool = False) -> str:
@@ -255,8 +290,29 @@ a{color:var(--acc);}
 /* ---------- en-tête compact, étapes, titres de section ---------- */
 .appbar{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin:0 0 16px;}
 .appbar .brand{display:flex; align-items:center; gap:12px; min-width:0;}
-.appbar .logo{flex:0 0 38px; width:38px; height:38px; border-radius:10px; display:grid; place-items:center; background:var(--acc); color:#0a0f05;}
-.appbar .logo svg{width:22px; height:22px;}
+.appbar .axon-mark{flex:0 0 38px; display:block;}
+
+/* ---------- logo Axon ---------- */
+.axon-logo{display:flex; align-items:center; gap:14px;}
+.axon-logo .axon-mark{flex:0 0 auto; display:block;}
+.axon-words{display:flex; flex-direction:column; line-height:1;}
+.axon-name{font-family:var(--head); font-weight:700; letter-spacing:.14em; color:var(--txt);}
+.axon-tag{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--acc); margin-top:7px;}
+.axon-logo.lg .axon-name{font-size:3rem;} .axon-logo.lg{gap:18px;}
+.axon-logo.md .axon-name{font-size:1.6rem;}
+.axon-logo.sm .axon-name{font-size:1.15rem;} .axon-logo.sm .axon-tag{font-size:.6rem; margin-top:4px;} .axon-logo.sm{gap:10px; margin:2px 0 6px;}
+.hero-logo{margin:4px 0 18px;}
+
+/* ---------- nous contacter ---------- */
+.side-contact{font-size:.82rem; color:var(--mut); margin-top:10px; line-height:1.5; word-break:break-all;}
+.side-contact a{color:var(--acc) !important;}
+.contact{border:1px solid var(--line2); border-radius:16px; padding:22px; background:rgba(12,17,24,.88);}
+.contact .ct-h{font-family:var(--head); font-size:1.3rem; font-weight:700; color:var(--txt); margin:0 0 6px;}
+.contact p{color:var(--mut) !important; margin:0 0 14px !important; line-height:1.55;}
+.contact .ct-mail{display:inline-flex; align-items:center; gap:10px; font-family:var(--mono); font-size:1.05rem; color:var(--acc) !important; text-decoration:none;
+  border:1px solid rgba(198,244,50,.45); background:rgba(198,244,50,.07); border-radius:10px; padding:10px 14px; word-break:break-all;}
+.contact .ct-mail:hover{background:rgba(198,244,50,.14);}
+.contact .ct-mail svg{width:20px; height:20px; flex:0 0 20px;}
 .appbar .name{font-family:var(--head); font-size:1.5rem; font-weight:700; letter-spacing:-.02em; line-height:1.1; color:var(--txt);}
 .appbar .tag{font-size:.9rem; color:var(--mut); margin-top:2px; line-height:1.35;}
 .appbar .who{font-size:.88rem; color:var(--mut); text-align:right; line-height:1.4;}
@@ -409,6 +465,8 @@ a{color:var(--acc);}
   :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) button[role="tab"]{padding:8px 13px; font-size:.9rem;}
   :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) :is(.stTabs,[data-testid="stTabs"]) [data-baseweb="tab-list"]{flex-wrap:nowrap !important; overflow-x:auto; gap:2px;}
   .appbar .name{font-size:1.25rem;} .appbar .who{display:none;}
+  .axon-logo.lg .axon-name{font-size:2.2rem;} .axon-logo.lg .axon-mark{width:50px; height:50px;} .axon-logo.lg{gap:14px;}
+  .contact{padding:16px;} .contact .ct-mail{font-size:.95rem;}
   .steps{grid-template-columns:1fr; gap:6px; margin-bottom:16px;}
   .stp{padding:9px 12px;}
   .sec{margin:22px 0 12px;} .sec .h{font-size:1.12rem;} .sec .s{margin-left:0;}

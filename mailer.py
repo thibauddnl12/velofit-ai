@@ -17,8 +17,14 @@ import ssl
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
-APP_NAME = "PostureVélo"
+APP_NAME = "Axon"
 TIMEOUT = 20
+DEFAULT_CONTACT = "axonbike4@gmail.com"
+
+
+def contact_email(get) -> str:
+    """Adresse « Nous contacter » : secret CONTACT_EMAIL s'il existe, sinon l'adresse d'Axon."""
+    return (get("CONTACT_EMAIL") or "").strip() or DEFAULT_CONTACT
 
 
 def settings(get) -> dict | None:
@@ -38,8 +44,8 @@ def is_configured(get) -> bool:
     return settings(get) is not None
 
 
-def send(get, to: str, subject: str, text: str, html: str | None = None):
-    """Envoie un e-mail. Retourne (ok, message lisible par l'administrateur)."""
+def send(get, to: str, subject: str, text: str, html: str | None = None, reply_to: str = ""):
+    """Envoie un e-mail. Retourne (ok, message lisible par l'administrateur). reply_to : adresse utilisée quand on clique sur « Répondre »."""
     cfg = settings(get)
     if cfg is None:
         return False, "L'envoi d'e-mails n'est pas configuré (SMTP_HOST, SMTP_USER, SMTP_PASSWORD)."
@@ -47,6 +53,8 @@ def send(get, to: str, subject: str, text: str, html: str | None = None):
     msg["Subject"] = subject
     msg["From"] = formataddr((APP_NAME, cfg["sender"]))
     msg["To"] = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["Message-ID"] = make_msgid(domain=cfg["sender"].split("@")[-1] or None)
     msg.set_content(text)
     if html:

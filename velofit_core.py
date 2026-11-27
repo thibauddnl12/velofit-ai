@@ -1,5 +1,5 @@
 # ==============================================================================
-#  velofit_core.py — logique métier de PostureVélo (aucune dépendance Streamlit)
+#  velofit_core.py — logique métier de Axon (aucune dépendance Streamlit)
 #  Vision, biomécanique, vidéo, calibration, mobilité, stockage et rapports.
 # ==============================================================================
 from __future__ import annotations
@@ -1431,6 +1431,15 @@ def parse_ride_csv(df):
 #  STOCKAGE LOCAL (profils, historique, images)
 # ------------------------------------------------------------------------------
 DATA_DIR = Path(os.environ.get("VELOFIT_DATA", "velofit_data"))
+CHANGE_HOOKS = []          # fonctions appelées après chaque écriture dans DATA_DIR (sauvegarde automatique : cloud_store.py)
+
+
+def notify_change():
+    for hook in list(CHANGE_HOOKS):
+        try:
+            hook()
+        except Exception:
+            pass
 
 
 def safe_name(name):
@@ -1451,6 +1460,7 @@ def _write_json(path, obj):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), "utf-8")
     tmp.replace(path)
+    notify_change()
 
 
 def _base(scope=""):
@@ -1571,7 +1581,7 @@ def assemble_report(ctx, m, ev, ranges, score, recs, quality, annotated_rgb, stu
     todo = [dict(title=r["title"], diag=_plain(r["diag"]), actions=[_plain(a) for a in r["actions"]])
             for r in recs if r["status"] in ("warn", "bad")]
     return dict(
-        studio=studio or "PostureVélo", client=client or "Cycliste", date=datetime.now().strftime("%d/%m/%Y"),
+        studio=studio or "Axon", client=client or "Cycliste", date=datetime.now().strftime("%d/%m/%Y"),
         discipline=ctx["discipline"], goal=ctx["goal"], flex=ctx["flex"], height=ctx["height"], weight=int(ctx.get("weight") or 0),
         score=float(score), verdict=title, verdict_sub=sub, quality=float(quality), rows=rows, todo=todo,
         image_png=png_bytes(annotated_rgb), logo=logo_bytes, extras=[(t, _plain(x)) for t, x in (extras or [])], notice=_plain(notice or ""),
