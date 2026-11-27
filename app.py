@@ -1,5 +1,5 @@
 # ==============================================================================
-#  PostureVélo — étude posturale vélo par photo
+#  Axon — étude posturale vélo par photo
 #  Lancement :  streamlit run app.py
 #  Fichiers à placer dans le même dossier : velofit_core.py, accounts.py, auth_ui.py,
 #  mailer.py, ui_kit.py et bike3d.py
@@ -29,7 +29,7 @@ import ui_kit
 import velofit_core as core
 from velofit_core import META, ORDER, STATUS
 
-st.set_page_config(page_title="PostureVélo — Étude posturale vélo", page_icon="🚴", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="Axon — Étude posturale vélo", page_icon="🚴", layout="wide", initial_sidebar_state="auto")
 
 # ------------------------------------------------------------------------------
 #  DESIGN
@@ -238,11 +238,11 @@ def profile_text():
 # ------------------------------------------------------------------------------
 if not profiles and ss.get("_onboarded") != SC:
     with st.sidebar:
-        st.markdown("### PostureVélo")
+        H(ui_kit.logo("sm"))
         auth_ui.sidebar_box(user)
     if not ss["profile_name"]:
         ss["profile_name"] = SC
-    H(ui_kit.appbar("PostureVélo", "Bienvenue ! Commençons par votre profil."))
+    H(ui_kit.appbar("Axon", "Bienvenue ! Commençons par votre profil."))
     H(ui_kit.stepper([("Votre profil", "Vélo, morphologie, douleurs", "now"),
                       ("Photo ou vidéo", "De profil, sur home-trainer", "todo"),
                       ("Résultats", "Score, réglages, vélo 3D", "todo")]))
@@ -271,7 +271,7 @@ if not profiles and ss.get("_onboarded") != SC:
 # ------------------------------------------------------------------------------
 active = (ss["profile_name"] or "").strip() or "Invité"
 with st.sidebar:
-    st.markdown("### PostureVélo")
+    H(ui_kit.logo("sm"))
     auth_ui.sidebar_box(user)
     st.markdown(f'<div class="side-sec">{"Client actif" if fitter else "Profil actif"}</div>', unsafe_allow_html=True)
     _w = int(ss["weight"])
@@ -596,16 +596,20 @@ def history_section(name, current=None, kp=""):
 # ------------------------------------------------------------------------------
 #  EN-TÊTE ET NAVIGATION
 # ------------------------------------------------------------------------------
-brand = (ss["studio"] or "PostureVélo") if fitter else "PostureVélo"
+brand = (ss["studio"] or "Axon") if fitter else "Axon"
 H(ui_kit.appbar(brand, "Analyse posturale à vélo : une photo ou une vidéo de profil, des réglages chiffrés.",
                 who=f"{'Client' if fitter else 'Profil'} : <b>{_html.escape(active)}</b><br>{_html.escape(profile_text())}"))
 
 PROFILE_TAB = "Fiche client" if fitter else "Mon profil"
-_top_names = ["Analyse", PROFILE_TAB, "Suivi", "Guide"] + (["Clients"] if fitter else []) + (["Administration"] if IS_ADMIN else [])
+_top_names = (["Analyse", PROFILE_TAB, "Suivi", "Guide"] + (["Clients"] if fitter else []) + ["Nous contacter"]
+              + (["Administration"] if IS_ADMIN else []))
 tabs_top = st.tabs(_top_names)
 t_main, t_prof, t_hist_top, t_guide = tabs_top[:4]
 t_clients = tabs_top[4] if fitter else None
+t_contact = tabs_top[_top_names.index("Nous contacter")]
 t_admin = tabs_top[-1] if IS_ADMIN else None
+with t_contact:
+    auth_ui.contact_tab(user, "ctu_")
 
 # --- profil : toujours modifiable
 with t_prof:
@@ -1196,7 +1200,7 @@ with t_main:
     with r_rep:
         section("Rapport personnalisé", "Un document à garder ou à transmettre : score, image annotée, mesures et plan d'action.", first=True)
         r1, r2 = st.columns(2)
-        studio_name = r1.text_input("Nom du studio / de la marque", value=ss["studio"] if fitter else "", key="rep_studio", placeholder="PostureVélo")
+        studio_name = r1.text_input("Nom du studio / de la marque", value=ss["studio"] if fitter else "", key="rep_studio", placeholder="Axon")
         client_name = r2.text_input("Nom du cycliste", value=active if active != "Invité" else "", key="rep_client")
         logo_file = st.file_uploader("Logo (optionnel)", type=["png", "jpg", "jpeg"], key="rep_logo")
         logo_bytes = logo_file.getvalue() if logo_file is not None else (ss["logo_png"] if fitter else None)
@@ -1206,14 +1210,14 @@ with t_main:
             with st.spinner("Création du PDF…"):
                 ss["_pdf"] = core.report_pdf(rep)
         if ss.get("_pdf"):
-            b1.download_button("Télécharger le PDF", ss["_pdf"], "posturevelo_rapport.pdf", "application/pdf", key="dl_pdf")
-        b2.download_button("Rapport HTML (imprimable)", core.report_html(rep).encode("utf-8"), "posturevelo_rapport.html", "text/html", key="dl_html")
-        b3.download_button("Rapport Markdown", core.report_markdown(rep).encode("utf-8"), "posturevelo_rapport.md", "text/markdown", key="dl_md")
+            b1.download_button("Télécharger le PDF", ss["_pdf"], "axon_rapport.pdf", "application/pdf", key="dl_pdf")
+        b2.download_button("Rapport HTML (imprimable)", core.report_html(rep).encode("utf-8"), "axon_rapport.html", "text/html", key="dl_html")
+        b3.download_button("Rapport Markdown", core.report_markdown(rep).encode("utf-8"), "axon_rapport.md", "text/markdown", key="dl_md")
         df_m = pd.DataFrame([{"Mesure": META[k]["label"], "Valeur (°)": round(m[k], 1), "Cible min": ranges[k][0], "Cible max": ranges[k][1],
                               "Statut": STATUS[ev[k]["status"]][1], "Score": round(scores[k])} for k in ORDER])
         e1, e2 = st.columns(2)
-        e1.download_button("Image annotée (PNG)", core.png_bytes(annotated), "posturevelo_analyse.png", "image/png", key="dl_png")
-        e2.download_button("Mesures (CSV)", df_m.to_csv(index=False).encode("utf-8"), "posturevelo_mesures.csv", "text/csv", key="dl_csv")
+        e1.download_button("Image annotée (PNG)", core.png_bytes(annotated), "axon_analyse.png", "image/png", key="dl_png")
+        e2.download_button("Mesures (CSV)", df_m.to_csv(index=False).encode("utf-8"), "axon_mesures.csv", "text/csv", key="dl_csv")
         note("Le PDF reprend le score, l'image annotée, les mesures, le plan d'action et les sections complétées dans les autres rubriques (recul de selle, vue de face, pédalage, douleurs, mobilité).")
 
     # --- vélo 3D du résumé : construit en dernier pour tenir compte du recul de selle mesuré plus haut
