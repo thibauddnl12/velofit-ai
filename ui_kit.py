@@ -28,53 +28,50 @@ BRAND_TAGLINE = "Étude posturale vélo"
 # ------------------------------------------------------------------------------
 #  LOGO AXON : emblème (cycliste en points articulaires sur un vélo dont le cadre forme un X) et nom dessiné
 # ------------------------------------------------------------------------------
+_EMB_WHEELS = '<circle cx="70" cy="160" r="45" fill="none" stroke="TIRE" stroke-width="6"/><circle cx="70" cy="160" r="40.5" fill="none" stroke="RIM" stroke-width="3"/><circle cx="70" cy="160" r="33" fill="none" stroke="RIM" stroke-width="1" opacity="0.5"/><path d="M75.0 160.0L103.0 160.0M74.2 162.7L97.8 177.8M73.1 163.9L90.6 185.8M70.5 165.0L73.4 192.8M68.9 164.9L62.7 192.2M66.4 163.5L46.5 183.2M65.5 162.2L40.3 174.3M65.0 159.4L37.2 156.0M65.5 157.8L40.3 145.7M67.4 155.7L52.7 131.9M68.9 155.1L62.7 127.8M71.7 155.3L81.1 128.9M73.1 156.1L90.6 134.2M74.7 158.4L101.2 149.3" stroke="RIM" stroke-width="0.8" opacity="0.55"/><circle cx="70" cy="160" r="5" fill="RIM"/><circle cx="230" cy="160" r="45" fill="none" stroke="TIRE" stroke-width="6"/><circle cx="230" cy="160" r="40.5" fill="none" stroke="RIM" stroke-width="3"/><circle cx="230" cy="160" r="33" fill="none" stroke="RIM" stroke-width="1" opacity="0.5"/><path d="M235.0 160.0L263.0 160.0M234.2 162.7L257.8 177.8M233.1 163.9L250.6 185.8M230.5 165.0L233.4 192.8M228.9 164.9L222.7 192.2M226.4 163.5L206.5 183.2M225.5 162.2L200.3 174.3M225.0 159.4L197.2 156.0M225.5 157.8L200.3 145.7M227.4 155.7L212.7 131.9M228.9 155.1L222.7 127.8M231.7 155.3L241.1 128.9M233.1 156.1L250.6 134.2M234.7 158.4L261.2 149.3" stroke="RIM" stroke-width="0.8" opacity="0.55"/><circle cx="230" cy="160" r="5" fill="RIM"/>'
+_EMB_PARTS = '<path d="M70 154L128 156M70 166L128 184" stroke="RIM" stroke-width="1.6" opacity="0.7"/><circle cx="70" cy="160" r="7" fill="none" stroke="RIM" stroke-width="2"/><circle cx="128" cy="170" r="14.5" fill="none" stroke="RIM" stroke-width="3" stroke-dasharray="2.2 1.4"/><circle cx="128" cy="170" r="10" fill="none" stroke="RIM" stroke-width="2"/><path d="M128.5 173.0L152.0 167.8A2.0 2.0 0 0 1 151.3 163.9L127.5 167.0A3.0 3.0 0 0 1 128.5 173.0Z" fill="RIM"/><path d="M127.5 167.0L104.0 172.2A2.0 2.0 0 0 1 104.7 176.1L128.5 173.0A3.0 3.0 0 0 1 127.5 167.0Z" fill="RIM" opacity="0.7"/><circle cx="128" cy="170" r="4" fill="TIRE"/><rect x="144.6" y="163.8" width="14" height="4" rx="2" fill="RIM"/><rect x="97.4" y="172.2" width="14" height="4" rx="2" fill="RIM" opacity="0.7"/><path d="M89.5 67.3L132.1 119.0A4.8 4.8 0 0 1 139.7 113.2L100.5 58.7A7.0 7.0 0 0 1 89.5 67.3Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M132.2 113.2L93.8 164.3A3.2 3.2 0 0 1 99.0 168.3L139.6 119.0A4.8 4.8 0 0 1 132.2 113.2Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M90.6 171.5L111.1 178.3A2.5 2.5 0 0 1 112.9 173.7L93.4 164.5A3.8 3.8 0 0 1 90.6 171.5Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M89.5 67.3L132.1 119.0A4.8 4.8 0 0 1 139.7 113.2L100.5 58.7A7.0 7.0 0 0 1 89.5 67.3Z" fill="DIM"/><path d="M132.2 113.2L93.8 164.3A3.2 3.2 0 0 1 99.0 168.3L139.6 119.0A4.8 4.8 0 0 1 132.2 113.2Z" fill="DIM"/><path d="M90.6 171.5L111.1 178.3A2.5 2.5 0 0 1 112.9 173.7L93.4 164.5A3.8 3.8 0 0 1 90.6 171.5Z" fill="DIM"/><path d="M76 61Q80 55 92 56L118 58Q121 59 118 61L94 64Q84 65 76 61Z" fill="TIRE" stroke="RIM" stroke-width="1.5"/><path d="M208 50L226 46" stroke="RIM" stroke-width="5" stroke-linecap="round"/><path d="M226 46H234Q246 46 246 58V70Q246 78 238 78H234" fill="none" stroke="RIM" stroke-width="4" stroke-linecap="round"/><path d="M232 46L240 44L242 52Z" fill="RIM"/><path d="M91.5 69.6L151.9 98.7A5.0 5.0 0 0 1 156.5 89.9L98.5 56.4A7.5 7.5 0 0 1 91.5 69.6Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M149.2 93.6L142.4 157.3A3.2 3.2 0 0 1 148.8 158.1L159.2 95.0A5.0 5.0 0 0 1 149.2 93.6Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M139.7 163.5L162.1 170.3A2.5 2.5 0 0 1 163.9 165.7L142.3 156.5A3.8 3.8 0 0 1 139.7 163.5Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M164.6 30.9L191.4 60.3A3.5 3.5 0 0 1 196.6 55.7L171.4 25.1A4.5 4.5 0 0 1 164.6 30.9Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M194.3 61.7L236.2 57.7A2.8 2.8 0 0 1 235.8 52.3L193.7 54.3A3.8 3.8 0 0 1 194.3 61.7Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M98.0 68.5L100.3 65.9L102.6 63.5L105.1 61.1L107.6 58.8L110.3 56.7L113.0 54.7L115.8 52.7L118.6 50.9L121.4 48.9L124.3 47.1L127.2 45.3L130.2 43.7L133.3 42.1L136.4 40.7L139.6 39.4L142.8 38.2L146.1 37.0L149.4 35.9L152.7 34.9L156.1 34.1L159.5 33.4L163.0 32.8L166.5 32.3L170.0 32.0L170.0 20.0L166.0 19.8L162.0 19.8L158.0 19.9L154.0 20.2L150.0 20.7L146.0 21.3L142.0 22.0L138.1 22.9L134.2 24.0L130.4 25.3L126.6 26.8L122.8 28.3L119.1 30.1L115.5 31.9L112.0 33.9L108.5 36.1L105.3 38.6L102.1 41.2L99.1 44.0L96.3 46.9L93.5 49.9L90.9 53.0L88.4 56.2L86.0 59.5Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M173.1 28.9L183.9 25.4A3.5 3.5 0 0 1 182.1 18.6L170.9 21.1A4.0 4.0 0 0 1 173.1 28.9Z" fill="none" stroke="RING" stroke-width="5" stroke-linejoin="round"/><path d="M98.0 68.5L100.3 65.9L102.6 63.5L105.1 61.1L107.6 58.8L110.3 56.7L113.0 54.7L115.8 52.7L118.6 50.9L121.4 48.9L124.3 47.1L127.2 45.3L130.2 43.7L133.3 42.1L136.4 40.7L139.6 39.4L142.8 38.2L146.1 37.0L149.4 35.9L152.7 34.9L156.1 34.1L159.5 33.4L163.0 32.8L166.5 32.3L170.0 32.0L170.0 20.0L166.0 19.8L162.0 19.8L158.0 19.9L154.0 20.2L150.0 20.7L146.0 21.3L142.0 22.0L138.1 22.9L134.2 24.0L130.4 25.3L126.6 26.8L122.8 28.3L119.1 30.1L115.5 31.9L112.0 33.9L108.5 36.1L105.3 38.6L102.1 41.2L99.1 44.0L96.3 46.9L93.5 49.9L90.9 53.0L88.4 56.2L86.0 59.5Z" fill="url(#axon-skin)"/><path d="M173.1 28.9L183.9 25.4A3.5 3.5 0 0 1 182.1 18.6L170.9 21.1A4.0 4.0 0 0 1 173.1 28.9Z" fill="url(#axon-skin)"/><path d="M91.5 69.6L151.9 98.7A5.0 5.0 0 0 1 156.5 89.9L98.5 56.4A7.5 7.5 0 0 1 91.5 69.6Z" fill="url(#axon-skin)"/><path d="M149.2 93.6L142.4 157.3A3.2 3.2 0 0 1 148.8 158.1L159.2 95.0A5.0 5.0 0 0 1 149.2 93.6Z" fill="url(#axon-skin)"/><path d="M139.7 163.5L162.1 170.3A2.5 2.5 0 0 1 163.9 165.7L142.3 156.5A3.8 3.8 0 0 1 139.7 163.5Z" fill="url(#axon-skin)"/><path d="M164.6 30.9L191.4 60.3A3.5 3.5 0 0 1 196.6 55.7L171.4 25.1A4.5 4.5 0 0 1 164.6 30.9Z" fill="url(#axon-skin)"/><path d="M194.3 61.7L236.2 57.7A2.8 2.8 0 0 1 235.8 52.3L193.7 54.3A3.8 3.8 0 0 1 194.3 61.7Z" fill="url(#axon-skin)"/><path d="M139.7 163.5L162.1 170.3A2.5 2.5 0 0 1 163.9 165.7L142.3 156.5A3.8 3.8 0 0 1 139.7 163.5Z" fill="SHOE"/><path d="M90.6 171.5L111.1 178.3A2.5 2.5 0 0 1 112.9 173.7L93.4 164.5A3.8 3.8 0 0 1 90.6 171.5Z" fill="SHOE" opacity="0.8"/><circle cx="190" cy="21" r="10" fill="url(#axon-skin)" stroke="RING" stroke-width="3"/><path d="M176 18C175 5 197 -1 207 12L203 15C195 12 185 14 176 18Z" fill="ACC" stroke="RING" stroke-width="2.5" stroke-linejoin="round"/><path d="M186 8L192 7M182 11L188 9.5" stroke="RING" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/><path d="M191 19.5H200Q201.5 19.5 201 21.5L200.5 23H192Z" fill="RING"/>'
+_EMB_JOINTS = [(95, 63), (145.6, 157.7), (154.2, 94.3), (168, 28), (194, 58), (236, 55)]
+
 _EMB_PAL = {
-    "color": dict(frame="url(#axon-x-color)", body="#f4f7fb", wheel="#aeb8c6", ring="#06090e", dim="#6f7a8a",
-                  nodes=["#c6f432", "#7ee98c", "#6fe597", "#49dcbc", "#36d3d6", "#22c5f0"]),
-    "ink": dict(frame="url(#axon-x-ink)", body="#06090e", wheel="#4a5566", ring="#f4f6f8", dim="#8a94a3",
-                nodes=["#4f7d00", "#1f8a52", "#1a885a", "#0f8a7a", "#0c848f", "#0a7fa8"]),
+    "color": dict(frame="url(#axon-x-color)", skin="url(#axon-skin)", ring="#06090e", tire="#2a3340", rim="#b7c1ce", dim="#7b8696",
+                  shoe="#e9eef4", wheel="#aeb8c6", nodes=["#c6f432", "#7ee98c", "#6fe597", "#49dcbc", "#36d3d6", "#22c5f0"]),
+    "ink": dict(frame="url(#axon-x-ink)", skin="url(#axon-skin-ink)", ring="#f4f6f8", tire="#4a5566", rim="#4a5566", dim="#8a94a3",
+                shoe="#06090e", wheel="#4a5566", nodes=["#4f7d00", "#1f8a52", "#1a885a", "#0f8a7a", "#0c848f", "#0a7fa8"]),
 }
 _EMB_DEFS = ('<defs><linearGradient id="axon-x-color" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="260" y2="0">'
              '<stop offset="0" stop-color="#c6f432"/><stop offset="0.5" stop-color="#4fe3a8"/><stop offset="1" stop-color="#22c5f0"/></linearGradient>'
              '<linearGradient id="axon-x-ink" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="260" y2="0">'
-             '<stop offset="0" stop-color="#4f7d00"/><stop offset="0.5" stop-color="#0f8a6a"/><stop offset="1" stop-color="#0a7fa8"/></linearGradient></defs>')
+             '<stop offset="0" stop-color="#4f7d00"/><stop offset="0.5" stop-color="#0f8a6a"/><stop offset="1" stop-color="#0a7fa8"/></linearGradient>'
+             '<linearGradient id="axon-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cdd6e2"/></linearGradient>'
+             '<linearGradient id="axon-skin-ink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a3340"/><stop offset="1" stop-color="#06090e"/></linearGradient></defs>')
+
+
+def _emb_fill(src: str, p: dict) -> str:
+    for token, key in (("TIRE", "tire"), ("RIM", "rim"), ("RING", "ring"), ("DIM", "dim"), ("SHOE", "shoe")):
+        src = src.replace(f'"{token}"', f'"{p[key]}"')
+    return src.replace('"ACC"', f'"{p["nodes"][5]}"').replace('"url(#axon-skin)"', f'"{p["skin"]}"')
 
 
 def emblem_svg(width=None, mode: str = "color", shade: str = "#1b2530", detail: bool = True, label: bool = True) -> str:
-    """Emblème Axon en SVG (viewBox 300 x 220). mode : "color", "ink" (fond clair) ou "shadow" (une seule teinte `shade`).
-    detail=False : seulement le X et les roues (petites tailles, où le cycliste serait illisible)."""
-    if mode == "shadow":
-        p = dict(frame=shade, body=shade, wheel=shade, ring=shade, dim=shade, nodes=[shade] * 6)
-    else:
-        p = _EMB_PAL.get(mode, _EMB_PAL["color"])
+    """Emblème Axon en SVG (viewBox 300 x 220) : un cycliste dont les articulations sont marquées, sur un vélo dont le cadre forme un X.
+    mode : "color" (fond sombre) ou "ink" (fond clair). detail=False : seulement le X et les roues (petites tailles)."""
+    p = _EMB_PAL.get(mode, _EMB_PAL["color"])
     n = p["nodes"]
     size = f' width="{width}" height="{round(width * 220 / 300)}"' if width else ""
     aria = ' role="img" aria-label="Logo Axon : un cycliste sur un vélo dont le cadre forme un X"' if label else ' aria-hidden="true"'
-    out = [f'<svg viewBox="0 0 300 220"{size}{aria}>', _EMB_DEFS if mode != "shadow" else "",
-           f'<circle cx="70" cy="160" r="46" fill="none" stroke="{p["wheel"]}" stroke-width="5"/>',
-           f'<circle cx="230" cy="160" r="46" fill="none" stroke="{p["wheel"]}" stroke-width="5"/>',
-           f'<polygon points="238.7,30 257.3,30 79.3,160 60.7,160" fill="{p["frame"]}"/>',
-           f'<polygon points="42.7,30 61.3,30 239.3,160 220.7,160" fill="{p["frame"]}" stroke="{p["ring"]}" stroke-width="5" paint-order="stroke"/>']
+    out = [f'<svg viewBox="0 0 300 220"{size}{aria}>', _EMB_DEFS]
     if detail:
-        leg_front = "M95 63L154.2 94.3L145.6 157.7L161 168M168 28L194 58L238 55"
-        torso = "M93 64C114 44 140 31 168 27L180 24"
-        back = "M95 63L135.9 116.1L96.4 166.3L111 176"
-        out += [
-            f'<path d="M70 160L128 170M103.4 174.3L152.6 165.7M146 165.7H159M97 174.3H110M220 52H236Q246 52 246 62V71Q246 77 240 77" fill="none" stroke="{p["wheel"]}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<circle cx="128" cy="170" r="13" fill="none" stroke="{p["wheel"]}" stroke-width="4"/>',
-            f'<path d="{back}" fill="none" stroke="{p["ring"]}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<path d="{back}" fill="none" stroke="{p["dim"]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<path d="{leg_front}" fill="none" stroke="{p["ring"]}" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<path d="{torso}" fill="none" stroke="{p["ring"]}" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<path d="{leg_front}" fill="none" stroke="{p["body"]}" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<path d="{torso}" fill="none" stroke="{p["body"]}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>',
-            f'<circle cx="189" cy="22" r="9.5" fill="{p["body"]}" stroke="{p["ring"]}" stroke-width="3"/>',
-            f'<path d="M176 19C175 6 197 1 205 14L200 16.5C193 14 184 16 176 19Z" fill="{n[5]}" stroke="{p["ring"]}" stroke-width="2.5" stroke-linejoin="round"/>',
-        ]
-        for (x, y), c in zip([(95, 63), (145.6, 157.7), (154.2, 94.3), (168, 28), (194, 58), (238, 55)], n):
-            out.append(f'<circle cx="{x}" cy="{y}" r="6" fill="{c}" stroke="{p["ring"]}" stroke-width="2.5"/>')
-    out += [f'<circle cx="70" cy="160" r="6.5" fill="{n[0]}" stroke="{p["ring"]}" stroke-width="2.5"/>',
-            f'<circle cx="230" cy="160" r="6.5" fill="{n[5]}" stroke="{p["ring"]}" stroke-width="2.5"/>', "</svg>"]
+        out.append(_emb_fill(_EMB_WHEELS, p))
+    else:
+        out += [f'<circle cx="{cx}" cy="160" r="46" fill="none" stroke="{p["wheel"]}" stroke-width="7"/>' for cx in (70, 230)]
+    out += [f'<polygon points="238.7,30 257.3,30 79.3,160 60.7,160" fill="{p["frame"]}"/>',
+            f'<polygon points="42.7,30 61.3,30 239.3,160 220.7,160" fill="{p["frame"]}" stroke="{p["ring"]}" stroke-width="5" paint-order="stroke"/>']
+    if detail:
+        out.append(_emb_fill(_EMB_PARTS, p))
+        for (x, y), c in zip(_EMB_JOINTS, n):
+            out.append(f'<circle cx="{x}" cy="{y}" r="4.6" fill="{c}" stroke="{p["ring"]}" stroke-width="2"/>')
+    out += [f'<circle cx="70" cy="160" r="5.5" fill="{n[0]}" stroke="{p["ring"]}" stroke-width="2"/>',
+            f'<circle cx="230" cy="160" r="5.5" fill="{n[5]}" stroke="{p["ring"]}" stroke-width="2"/>', "</svg>"]
     return "".join(out)
 
 
@@ -98,16 +95,16 @@ def wordmark_svg(height: int = 48, mode: str = "color") -> str:
 
 
 def emblem_3d(layers: int = 11, depth: float = 18.0) -> str:
-    """Emblème en relief qui tourne sur lui-même (CSS 3D, sans JavaScript) : copies empilées en profondeur,
-    en couleur devant et derrière, en teintes sombres entre les deux."""
+    """Emblème en relief qui tourne sur lui-même (CSS 3D, sans JavaScript) : copies en couleur empilées en profondeur,
+    de plus en plus sombres vers le milieu, pour que les tranches gardent les couleurs du logo."""
     parts = []
     for i in range(layers):
         t = i / (layers - 1)
         z = (t - 0.5) * depth
         edge = i in (0, layers - 1)
-        light = round(18 + 22 * abs(t - 0.5) * 2)
-        svg = emblem_svg(None, "color" if edge else "shadow", f"hsl(205,22%,{light}%)", label=(i == layers - 1))
-        parts.append(f'<div class="ly" style="transform:translateZ({z:.1f}px)">{svg}</div>')
+        bright = 1.0 if edge else round(0.42 + 0.38 * abs(t - 0.5) * 2, 2)
+        style = f"transform:translateZ({z:.1f}px)" + ("" if edge else f";filter:brightness({bright}) saturate(1.25)")
+        parts.append(f'<div class="ly" style="{style}">{emblem_svg(None, "color", label=(i == layers - 1))}</div>')
     return f'<div class="emb3d"><div class="spin">{"".join(parts)}</div></div>'
 
 
